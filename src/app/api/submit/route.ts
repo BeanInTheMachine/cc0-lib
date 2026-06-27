@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getSiteUrl } from "@/lib/site-url";
 
 const submitSchema = z.object({
   arweaveId: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Invalid Arweave transaction ID"),
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
           id: newItem.id,
           title: newItem.Title,
           slug: itemSlug,
-          url: `https://cc0-lib.wtf/${itemSlug}`,
+          url: `${getSiteUrl()}/${itemSlug}`,
         },
         { status: 200 }
       );

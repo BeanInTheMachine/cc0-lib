@@ -8,10 +8,11 @@ import Link from "next/link";
 
 type SocialShareProps = {
   data: Item;
+  baseUrl: string;
   className?: string;
 };
 
-const SocialShare = ({ data, className }: SocialShareProps) => {
+const SocialShare = ({ data, baseUrl, className }: SocialShareProps) => {
   return (
     <div
       className={`${className} group flex w-1/2 cursor-pointer flex-row gap-0`}
@@ -26,14 +27,14 @@ const SocialShare = ({ data, className }: SocialShareProps) => {
         <TwitterShareButton
           title={`Check this CC0 asset i found on @cc0lib! ${data.Title}`}
           blankTarget={true}
-          url={`https://cc0-lib.wtf/${slugify(data.Title)}`}
+          url={`${baseUrl}/${slugify(data.Title)}`}
         >
           <TwitterIcon className="h-4 w-4 self-center opacity-0 hover:stroke-prim hover:text-prim group-hover:opacity-100" />
         </TwitterShareButton>
 
         <WarpcastShare
           text={`${data.Title}`}
-          embed={`https://cc0-lib.wtf/${slugify(data.Title)}`}
+          embed={`${baseUrl}/${slugify(data.Title)}`}
         >
           <svg
             width="32"
@@ -76,10 +77,10 @@ const SocialShare = ({ data, className }: SocialShareProps) => {
           subject={`Check out this CC0 work: ${data.Title}`}
           body={`Hi there,\n\nI wanted to share this amazing CC0 piece of media called "${
             data.Title
-          }". You can find it at: https://cc0-lib.wtf/${slugify(
+          }". You can find it at: ${baseUrl}/${slugify(
             data.Title
           )}.\n\nEnjoy!\n`}
-          url={`https://cc0-lib.wtf/${slugify(data.Title)}`}
+          url={`${baseUrl}/${slugify(data.Title)}`}
           blankTarget={true}
         >
           <Mail className="h-4 w-4 self-center opacity-0 hover:stroke-prim hover:text-prim group-hover:opacity-100" />

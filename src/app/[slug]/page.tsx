@@ -16,6 +16,7 @@ import Divider from "@/components/ui/divider";
 import ModelViewer from "@/components/ui/model-viewer";
 import { Route } from "next";
 import GatewayImage from "@/components/ui/gateway-image";
+import { getSiteUrl } from "@/lib/site-url";
 
 type DetailsPageProps = {
   params: Promise<{ slug: string }>;
@@ -24,20 +25,21 @@ type DetailsPageProps = {
 export const generateMetadata = async ({ params }: DetailsPageProps) => {
   const { slug } = await params;
   const data = getItemBySlug(slug);
+  const siteUrl = getSiteUrl();
   return {
     title: `${data?.Title} | CC0-LIB`,
     description: data?.Description,
-    image: data?.ThumbnailURL || "https://cc0-lib.wtf/og.png",
-    url: `https://cc0-lib.wtf/${slug}`,
+    image: data?.ThumbnailURL || `${siteUrl}/og.png`,
+    url: `${siteUrl}/${slug}`,
     type: "website",
     openGraph: {
       title: `${data?.Title} | CC0-LIB`,
       description: data?.Description,
-      url: `https://cc0-lib.wtf/${slug}`,
+      url: `${siteUrl}/${slug}`,
       type: "website",
       images: [
         {
-          url: data?.ThumbnailURL || "https://cc0-lib.wtf/og.png",
+          url: data?.ThumbnailURL || `${siteUrl}/og.png`,
           width: 800,
           height: 400,
           alt: data?.Title,
@@ -49,7 +51,7 @@ export const generateMetadata = async ({ params }: DetailsPageProps) => {
       card: "summary_large_image",
       title: `${data?.Title} | CC0-LIB`,
       description: data?.Description,
-      images: [data?.ThumbnailURL || "https://cc0-lib.wtf/og.png"],
+      images: [data?.ThumbnailURL || `${siteUrl}/og.png`],
     },
   };
 };
@@ -174,7 +176,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
                 </Link>
               )}
               {data.File && <DownloadFile data={data} showExtension={true} />}
-              <SocialShare data={data} />
+              <SocialShare data={data} baseUrl={getSiteUrl()} />
             </div>
 
             <div className="flex w-full flex-col gap-1 text-sm text-zinc-400">

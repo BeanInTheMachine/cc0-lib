@@ -1,6 +1,7 @@
 import DownloadFile from "@/components/data/dl";
 import Container from "@/components/ui/container";
 import { readMetadata, slugify } from "@/lib/metadata";
+import { getSiteUrl } from "@/lib/site-url";
 import { MoreHorizontal, RefreshCcw } from "lucide-react";
 import GatewayImage from "@/components/ui/gateway-image";
 import Link from "next/link";
@@ -8,8 +9,9 @@ import Link from "next/link";
 export const generateMetadata = () => {
   const title = "Random | CC0-LIB";
   const description = "Random image from CC0-LIB";
-  const image = "https://cc0-lib.wtf/og.png";
-  const url = "https://cc0-lib.wtf/random";
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/random`;
 
   return {
     title,

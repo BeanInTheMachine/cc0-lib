@@ -1,13 +1,15 @@
 import Container from "@/components/ui/container";
 import { staticPages } from "@/lib/constants";
+import { getSiteUrl } from "@/lib/site-url";
 import { readMetadata, shuffle, slugify } from "@/lib/metadata";
 import Link from "next/link";
 
 export const generateMetadata = () => {
   const title = "Sitemap | CC0-LIB";
   const description = "CC0-LIB sitemap";
-  const image = "https://cc0-lib.wtf/og.png";
-  const url = "https://cc0-lib.wtf/sitemap";
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/sitemap`;
 
   return {
     title,

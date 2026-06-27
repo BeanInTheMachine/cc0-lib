@@ -1,12 +1,14 @@
 import Container from "@/components/ui/container";
+import { getSiteUrl } from "@/lib/site-url";
 import { BookOpen } from "lucide-react";
 import Link from "next/link";
 
 export const generateMetadata = async () => {
   const title = `Disclaimer | CC0-LIB`;
   const description = "Disclaimer";
-  const image = `https://cc0-lib.wtf/og.png`;
-  const url = `https://cc0-lib.wtf/disclaimer`;
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/disclaimer`;
 
   return {
     title: title,

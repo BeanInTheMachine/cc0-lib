@@ -1,11 +1,13 @@
 import { readMetadata } from "@/lib/metadata";
+import { getSiteUrl } from "@/lib/site-url";
 import FrontPage from "./front-page";
 
 export const generateMetadata = () => {
   const title = "CC0-LIB";
   const description = "CC0-LIB is a free and open source library of CC0 assets";
-  const image = "https://cc0-lib.wtf/og.png";
-  const url = "https://cc0-lib.wtf";
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = siteUrl;
 
   return {
     title,

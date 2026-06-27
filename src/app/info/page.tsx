@@ -1,11 +1,13 @@
 import Link from "next/link";
 import Container from "@/components/ui/container";
+import { getSiteUrl } from "@/lib/site-url";
 
 export const generateMetadata = async () => {
   const title = `Info | CC0-LIB`;
   const description = "What is CC0-LIB";
-  const image = `https://cc0-lib.wtf/og.png`;
-  const url = `https://cc0-lib.wtf/info`;
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/info`;
 
   return {
     title: title,

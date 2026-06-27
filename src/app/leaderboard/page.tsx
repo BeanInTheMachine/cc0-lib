@@ -1,5 +1,6 @@
 import Container from "@/components/ui/container";
 import { readMetadata, getLeaderboard } from "@/lib/metadata";
+import { getSiteUrl } from "@/lib/site-url";
 import { ScrollIcon, Send } from "lucide-react";
 import { Route } from "next";
 import Link from "next/link";
@@ -7,8 +8,9 @@ import Link from "next/link";
 export const generateMetadata = () => {
   const title = "Leaderboard | CC0-LIB";
   const description = "Check who contributed the most to CC0-LIB";
-  const image = "https://cc0-lib.wtf/og.png";
-  const url = "https://cc0-lib.wtf/leaderboard";
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/leaderboard`;
 
   return {
     title,

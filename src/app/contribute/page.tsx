@@ -1,13 +1,15 @@
 import FileDownloader from "@/components/data/file-dl";
 import Container from "@/components/ui/container";
+import { getSiteUrl } from "@/lib/site-url";
 import { Dot } from "lucide-react";
 import Link from "next/link";
 
 export const generateMetadata = async () => {
   const title = `Contribute | CC0-LIB`;
   const description = "How to contribute to CC0-LIB";
-  const image = `https://cc0-lib.wtf/og.png`;
-  const url = `https://cc0-lib.wtf/contribute`;
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/contribute`;
 
   return {
     title: title,

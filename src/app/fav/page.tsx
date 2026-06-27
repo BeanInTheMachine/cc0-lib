@@ -1,11 +1,13 @@
 import { readMetadata } from "@/lib/metadata";
+import { getSiteUrl } from "@/lib/site-url";
 import FavPage from "./fav-page";
 
 export const generateMetadata = () => {
   const title = "Fav | CC0-LIB";
   const description = "Favourite Content";
-  const image = "https://cc0-lib.wtf/og.png";
-  const url = "https://cc0-lib.wtf/fav";
+  const siteUrl = getSiteUrl();
+  const image = `${siteUrl}/og.png`;
+  const url = `${siteUrl}/fav`;
 
   return {
     title,
