@@ -13,6 +13,7 @@
     "@radix-ui/react-context-menu": "^2.2.1",
     "@radix-ui/react-toast": "^1.1.4",
     "@rive-app/react-canvas": "^4.4.0",
+    "@vercel/analytics": "^2.0.1",
     "autoprefixer": "10.4.14",
     "clsx": "^2.0.0",
     "eslint": "8.43.0",

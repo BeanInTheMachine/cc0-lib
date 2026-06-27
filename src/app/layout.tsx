@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { getSiteUrl } from "@/lib/site-url";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <MainContainer>{children}</MainContainer>
+        <Analytics />
       </body>
     </html>
   );
