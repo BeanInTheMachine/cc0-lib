@@ -1,55 +1,45 @@
 import Container from "@/components/ui/container";
-import { staticPages } from "@/lib/constant";
-import { getPublishedItems, shuffle, slugify } from "@/lib/utils";
+import { staticPages } from "@/lib/constants";
+import { readMetadata, shuffle, slugify } from "@/lib/metadata";
 import Link from "next/link";
 
-export const generateMetadata = async () => {
-  const title = `Sitemap | CC0-LIB`;
+export const generateMetadata = () => {
+  const title = "Sitemap | CC0-LIB";
   const description = "CC0-LIB sitemap";
-  const image = `https://cc0-lib.wtf/og.png`;
-  const url = `https://cc0-lib.wtf/sitemap`;
+  const image = "https://cc0-lib.wtf/og.png";
+  const url = "https://cc0-lib.wtf/sitemap";
 
   return {
-    title: title,
-    description: description,
-    image: image,
-    url: url,
+    title,
+    description,
+    image,
+    url,
     type: "website",
     openGraph: {
-      title: title,
-      description: description,
-      url: url,
+      title,
+      description,
+      url,
       type: "website",
-      images: [
-        {
-          url: image,
-          width: 800,
-          height: 400,
-          alt: title,
-        },
-      ],
+      images: [{ url: image, width: 800, height: 400, alt: title }],
       locale: "en_US",
     },
     twitter: {
       card: "summary_large_image",
-      title: title,
-      description: description,
+      title,
+      description,
       images: [image],
     },
   };
 };
 
-const SiteMapPage = async () => {
-  const data = await getPublishedItems();
+const SiteMapPage = () => {
+  const data = readMetadata().filter((item) => item.Status === "published");
 
   const tagsList: string[] = shuffle(
     Array.from(
       new Set(
         data
-          .map((item) => {
-            if (!item.Tags) return [];
-            return item.Tags;
-          })
+          .map((item) => item.Tags ?? [])
           .flat()
       )
     )
@@ -59,11 +49,8 @@ const SiteMapPage = async () => {
     Array.from(
       new Set(
         data
-          .map((item) => {
-            if (!item.Type) return [];
-            return item.Type;
-          })
-          .flat()
+          .map((item) => item.Type)
+          .filter(Boolean)
       )
     )
   );
@@ -72,11 +59,8 @@ const SiteMapPage = async () => {
     Array.from(
       new Set(
         data
-          .map((item) => {
-            if (!item.Filetype) return [];
-            return item.Filetype;
-          })
-          .flat()
+          .map((item) => item.Filetype)
+          .filter(Boolean)
       )
     )
   );
@@ -86,8 +70,6 @@ const SiteMapPage = async () => {
   return (
     <Container>
       <div className="duration-250 peer w-full bg-transparent px-4 py-16 font-rubik leading-8 text-prim drop-shadow-md transition-all ease-linear selection:bg-zinc-800 selection:text-sec placeholder:text-zinc-600 focus:rounded-sm focus:bg-zinc-800 focus:bg-opacity-50 focus:outline-none focus:backdrop-blur-md sm:p-16">
-        {/* <div className="duration-250 peer flex w-full flex-col gap-8 bg-transparent px-4 py-16 text-prim  drop-shadow-md transition-all ease-linear selection:bg-zinc-800 selection:text-sec placeholder:text-zinc-600 focus:rounded-sm focus:bg-zinc-800 focus:bg-opacity-50 focus:outline-none focus:backdrop-blur-md sm:p-16"> */}
-
         {data.length > 0 && (
           <span className="mr-4 font-rubik text-2xl sm:text-4xl">
             {data.length} items in the library +++

@@ -1,51 +1,41 @@
 import Container from "@/components/ui/container";
-import { getPublishedItems, handleENSLeaderboard } from "@/lib/utils";
+import { readMetadata, getLeaderboard } from "@/lib/metadata";
 import { ScrollIcon, Send } from "lucide-react";
 import { Route } from "next";
 import Link from "next/link";
 
-export const generateMetadata = async () => {
-  const title = `Leaderboard | CC0-LIB`;
+export const generateMetadata = () => {
+  const title = "Leaderboard | CC0-LIB";
   const description = "Check who contributed the most to CC0-LIB";
-  const image = `https://cc0-lib.wtf/og.png`;
-  const url = `https://cc0-lib.wtf/leaderboard`;
+  const image = "https://cc0-lib.wtf/og.png";
+  const url = "https://cc0-lib.wtf/leaderboard";
 
   return {
-    title: title,
-    description: description,
-    image: image,
-    url: url,
+    title,
+    description,
+    image,
+    url,
     type: "website",
     openGraph: {
-      title: title,
-      description: description,
-      url: url,
+      title,
+      description,
+      url,
       type: "website",
-      images: [
-        {
-          url: image,
-          width: 800,
-          height: 400,
-          alt: title,
-        },
-      ],
+      images: [{ url: image, width: 800, height: 400, alt: title }],
       locale: "en_US",
     },
     twitter: {
       card: "summary_large_image",
-      title: title,
-      description: description,
+      title,
+      description,
       images: [image],
     },
   };
 };
 
-const LeaderboardPage = async () => {
-  const data = await getPublishedItems();
-
-  const top10 = handleENSLeaderboard(data).top10;
-  const top10Data = handleENSLeaderboard(data).top10Data;
-  const full = handleENSLeaderboard(data).full;
+const LeaderboardPage = () => {
+  const data = readMetadata().filter((item) => item.Status === "published");
+  const { top10, top10Data } = getLeaderboard(data);
 
   return (
     <Container>
@@ -78,9 +68,9 @@ const LeaderboardPage = async () => {
                   </Link>
                 </div>
                 <Link href={`/?search=${item.ens}`}>
-                  <span className="group flex flex-row items-center gap-1 justify-self-end text-zinc-500 hover:bg-prim hover:text-zinc-700 ">
+                  <span className="group flex flex-row items-center gap-1 justify-self-end text-zinc-500 hover:bg-prim hover:text-zinc-700">
                     [
-                    <span className="h-6-w-6 text-white group-hover:text-zinc-700">
+                    <span className="text-white group-hover:text-zinc-700">
                       {JSON.stringify(item.count)}
                     </span>
                     <ScrollIcon className="h-6 w-6 stroke-white group-hover:stroke-zinc-700" />
@@ -91,9 +81,9 @@ const LeaderboardPage = async () => {
             </div>
           ))}
         </div>
-        <div className="w-max-sm text-md flex w-full flex-row justify-evenly gap-4 p-8 text-center text-zinc-400 sm:text-lg">
+        <div className="flex w-full flex-row justify-evenly gap-4 p-8 text-center text-zinc-400 text-md sm:text-lg">
           <span>not in the list?</span>
-          <Link href="/dashboard">
+          <Link href="/contribute">
             <div className="group flex w-full flex-row items-center gap-2 hover:text-prim">
               <span>submit yours</span>
               <Send className="h-4 w-4 group-hover:stroke-prim" />

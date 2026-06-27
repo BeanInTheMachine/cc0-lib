@@ -1,10 +1,10 @@
-import { staticPages } from "@/lib/constant";
-import { slugify, getPublishedItems } from "@/lib/utils";
+import { staticPages } from "@/lib/constants";
+import { readMetadata, slugify } from "@/lib/metadata";
 
 const url = "https://cc0-lib.wtf";
 
-export const sitemap = async () => {
-  const itemData = await getPublishedItems();
+export default function sitemap() {
+  const itemData = readMetadata().filter((item) => item.Status === "published");
   const items = itemData.map((item) => ({
     url: `${url}/${slugify(item.Title)}`,
     lastModified: new Date().toISOString(),
@@ -16,6 +16,4 @@ export const sitemap = async () => {
   }));
 
   return [...pages, ...items];
-};
-
-export default sitemap;
+}

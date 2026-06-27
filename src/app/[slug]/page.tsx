@@ -1,67 +1,39 @@
-import { z } from "zod";
-import { Suspense } from "react";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Iframe from "react-iframe";
 import {
-  CalendarIcon,
   ChevronsDown,
-  Eye,
   LinkIcon,
-  Send,
   User,
 } from "lucide-react";
 import AudioPlayer from "@/components/ui/audio-player";
 import VideoPlayer from "@/components/ui/video-player";
 import SocialShare from "@/components/ui/social-share";
-import {
-  getPublishedItems,
-  getDateFromItem,
-  shortDomainName,
-  slugify,
-} from "@/lib/utils";
-import Sentiment from "@/components/data/sentiment";
+import { getItemBySlug, shortDomainName, slugify } from "@/lib/metadata";
 import DownloadFile from "@/components/data/dl";
 import Container from "@/components/ui/container";
 import Divider from "@/components/ui/divider";
-import FCComments from "@/components/fc/fc-comments";
-import Comments from "@/components/data/comments";
-import PageViews from "@/components/data/page-views";
 import ModelViewer from "@/components/ui/model-viewer";
-import { addComment } from "@/lib/redis";
 import { Route } from "next";
-import Image from "next/image";
-import ImageDownloader from "@/components/data/image-dl";
-
-const getItem = async (slug: string) => {
-  const data = await getPublishedItems();
-
-  const filteredData = data.filter((item) => {
-    return slugify(item.Title) === slug;
-  });
-
-  return filteredData[0];
-};
+import GatewayImage from "@/components/ui/gateway-image";
 
 type DetailsPageProps = {
-  params: {
-    slug: string;
-  };
+  params: Promise<{ slug: string }>;
 };
 
 export const generateMetadata = async ({ params }: DetailsPageProps) => {
-  const data = await getItem(params.slug);
+  const { slug } = await params;
+  const data = getItemBySlug(slug);
   return {
     title: `${data?.Title} | CC0-LIB`,
     description: data?.Description,
     image: data?.ThumbnailURL || "https://cc0-lib.wtf/og.png",
-    url: `https://cc0-lib.wtf/${params.slug}`,
+    url: `https://cc0-lib.wtf/${slug}`,
     type: "website",
     openGraph: {
       title: `${data?.Title} | CC0-LIB`,
       description: data?.Description,
-      url: `https://cc0-lib.wtf/${params.slug}`,
+      url: `https://cc0-lib.wtf/${slug}`,
       type: "website",
       images: [
         {
@@ -83,47 +55,26 @@ export const generateMetadata = async ({ params }: DetailsPageProps) => {
 };
 
 const DetailsPage = async ({ params }: DetailsPageProps) => {
-  const data = await getItem(params.slug);
+  const { slug } = await params;
+  const data = getItemBySlug(slug);
 
   if (!data) {
     notFound();
   }
 
-  const { lastEdited } = await getDateFromItem(data?.id);
-
-  const addComments = async (formData: FormData) => {
-    "use server";
-
-    const { comment } = Object.fromEntries(formData);
-
-    const schema = z
-      .object({
-        comment: z.string().min(1).max(20),
-      })
-      .safeParse({ comment });
-
-    if (!schema.success) {
-      const err = schema.error.format();
-      console.log(err?.comment?._errors[0]);
-    } else {
-      await addComment(data.ID, comment as string);
-      revalidatePath(`/[slug]`);
-    }
-  };
-
   return (
     <Container>
-      {data && data?.Type === "3D" && data?.Filetype === "GLB" && (
+      {data && data.Type === "3D" && data.Filetype === "GLB" && (
         <div className="hidden h-auto w-full max-w-5xl items-center justify-center sm:block">
           <ModelViewer data={data} />
         </div>
       )}
 
-      {data && data?.Type === "Video" && data.File && (
+      {data && data.Type === "Video" && data.File && (
         <VideoPlayer src={data.File} data={data} className="" />
       )}
 
-      {data && data?.Type === "Audio" && data.File && (
+      {data && data.Type === "Audio" && data.File && (
         <AudioPlayer
           format={data.Filetype}
           href={data.File}
@@ -131,7 +82,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
         />
       )}
 
-      {data && data?.Type === "Working Files" && data?.Filetype === "Figma" && (
+      {data && data.Type === "Working Files" && data.Filetype === "Figma" && (
         <iframe
           src={`https://www.figma.com/embed?embed_host=share&url=${data.File}`}
           title="Figma Viewer"
@@ -141,8 +92,8 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
       )}
 
       {data &&
-        data?.Type === "Working Files" &&
-        data?.Filetype === "PDF" &&
+        data.Type === "Working Files" &&
+        data.Filetype === "PDF" &&
         data.File && (
           <Iframe
             url={data.File}
@@ -151,18 +102,18 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
           />
         )}
 
-      {data && (data?.Type === "Image" || data?.Type === "GIF") && (
-        <Image
+      {data && (data.Type === "Image" || data.Type === "GIF") && (
+        <GatewayImage
           src={data.ThumbnailURL as string}
           alt={data.Title}
           width={768}
           height={768}
-          className=" h-auto w-full max-w-3xl object-cover px-2 py-16 shadow-md sm:w-3/4 sm:p-16"
+          className="h-auto w-full max-w-3xl object-cover px-2 py-16 shadow-md sm:w-3/4 sm:p-16"
         />
       )}
 
-      {data && (data?.Type === "3D" || data?.Type === "Working Files") && (
-        <Image
+      {data && (data.Type === "3D" || data.Type === "Working Files") && (
+        <GatewayImage
           src={data.ThumbnailURL as string}
           alt={data.Title}
           width={768}
@@ -180,16 +131,16 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
       )}
 
       {data &&
-        (data?.Type === "Image" ||
-          data?.Type === "GIF" ||
-          data?.Type === "Video" ||
-          data?.Filetype === "Figma") && <MoreDetails />}
+        (data.Type === "Image" ||
+          data.Type === "GIF" ||
+          data.Type === "Video" ||
+          data.Filetype === "Figma") && <MoreDetails />}
 
       {data && (
         <div className="flex w-full max-w-5xl flex-col items-center justify-between gap-4 p-2 sm:flex-row sm:p-16">
           <div className="duration-250 flex w-full flex-col gap-4 font-spline text-2xl text-white transition-all ease-linear">
             <div className="flex flex-row gap-4">
-              <span className=" flex flex-row gap-2 text-sm text-zinc-400">
+              <span className="flex flex-row gap-2 text-sm text-zinc-400">
                 <User className="h-4 w-4 self-center" />
                 {data?.ENS ? (
                   <Link
@@ -198,30 +149,12 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
                     rel="noopener noreferrer"
                     className="group flex flex-row gap-1 hover:text-prim"
                   >
-                    {data?.ENS}{" "}
+                    {data?.ENS}
                   </Link>
                 ) : (
                   <span>cc0-lib</span>
                 )}
               </span>
-              {lastEdited && (
-                <span className="flex flex-row gap-2 text-sm text-zinc-400">
-                  <CalendarIcon className="h-4 w-4 self-center" />
-                  <span>
-                    {new Date(lastEdited).toLocaleDateString("en-US")}
-                  </span>
-                </span>
-              )}
-              <Suspense
-                fallback={
-                  <span className="flex flex-row gap-2 text-sm text-zinc-400">
-                    <Eye className="h-4 w-4 self-center" />
-                    <span className="self-center">getting views..</span>
-                  </span>
-                }
-              >
-                <PageViews id={data.ID} />
-              </Suspense>
             </div>
 
             <span className="font-rubik text-3xl text-prim md:-ml-1 md:text-5xl">
@@ -236,20 +169,18 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
                   rel="noopener noreferrer"
                   className="group flex flex-row gap-1 hover:text-prim"
                 >
-                  {shortDomainName(data?.Source)}{" "}
+                  {shortDomainName(data?.Source)}
                   <LinkIcon className="h-4 w-4 self-center group-hover:stroke-prim" />
                 </Link>
               )}
-              {data.Type === "Image" && <ImageDownloader data={data} />}
               {data.File && <DownloadFile data={data} showExtension={true} />}
               <SocialShare data={data} />
             </div>
 
             <div className="flex w-full flex-col gap-1 text-sm text-zinc-400">
               {data?.Type && (
-                <span className="flex flex-row items-center gap-2 lowercase ">
+                <span className="flex flex-row items-center gap-2 lowercase">
                   <span>type:</span>
-
                   <Link
                     href={`/?type=${data.Type.toLowerCase()}`}
                     className="hover:text-prim"
@@ -259,9 +190,8 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
                 </span>
               )}
               {data?.Filetype && (
-                <span className="flex flex-row items-center gap-2 lowercase ">
+                <span className="flex flex-row items-center gap-2 lowercase">
                   <span>format:</span>
-
                   <Link
                     href={`/?format=${data.Filetype.toLowerCase()}`}
                     className="hover:text-prim"
@@ -272,9 +202,8 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
               )}
 
               {data?.ID && (
-                <span className="flex flex-row items-center gap-2 lowercase ">
+                <span className="flex flex-row items-center gap-2 lowercase">
                   <span>id:</span>
-
                   {data.ID}
                 </span>
               )}
@@ -283,91 +212,39 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
                 <span className="flex flex-row items-start gap-2 lowercase">
                   <span>tags:</span>
                   <div className="grid grid-cols-3 text-center sm:grid-cols-5">
-                    {data.Tags.map((tag) => {
-                      return (
-                        <Link
-                          href={`/?tag=${tag.toLowerCase()}`}
-                          key={tag}
-                          className="sm:py-1/12 px-1 py-0 hover:text-prim sm:px-2"
-                        >
-                          {tag}
-                        </Link>
-                      );
-                    })}
+                    {data.Tags.map((tag) => (
+                      <Link
+                        href={`/?tag=${tag.toLowerCase()}`}
+                        key={tag}
+                        className="px-1 py-0 hover:text-prim sm:px-2"
+                      >
+                        {tag}
+                      </Link>
+                    ))}
                   </div>
                 </span>
               )}
             </div>
-            <Sentiment data={data} />
 
             <Divider className="max-w-sm" />
 
-            <Suspense
-              fallback={
-                <div className="font-rubik text-lg text-prim">
-                  getting comments..
-                </div>
-              }
-            >
-              <Comments id={data.ID} />
-            </Suspense>
-
-            <form
-              action={addComments}
-              className=" flex max-w-sm flex-row justify-between gap-2 text-sm"
-            >
-              <input
-                type="text"
-                name="comment"
-                placeholder="add comment"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck="false"
-                minLength={1}
-                maxLength={40}
-                required
-                key={Math.random()}
-                className="peer w-full bg-zinc-900 text-zinc-500 placeholder:text-zinc-600 focus:outline-none"
-              />
-
-              <button
-                aria-label="submit comment"
-                type="submit"
-                className="text-zinc-600 peer-focus:text-prim hover:text-prim "
-              >
-                <Send className="h-4 w-4 self-center" />
-              </button>
-            </form>
-
-            {process.env.NODE_ENV !== "development" && (
-              <Suspense
-                fallback={
-                  <div className="font-rubik text-lg text-prim">
-                    getting fc comments..
-                  </div>
-                }
-              >
-                <FCComments slug={params.slug} />
-              </Suspense>
-            )}
           </div>
 
           {(data?.Type === "Image" ||
             data?.Type === "GIF" ||
             data?.Type === "Working Files" ||
             data?.Type === "3D") && (
-            <Image
+            <GatewayImage
               src={data.ThumbnailURL as string}
               alt={data.Title}
               width={500}
               height={500}
-              className=" hidden h-auto w-2/5 object-cover px-2 shadow-md lg:block"
+              className="hidden h-auto w-2/5 object-cover px-2 shadow-md lg:block"
             />
           )}
 
           {data?.Type === "Video" && (
-            <Image
+            <GatewayImage
               src={data.ThumbnailURL as string}
               alt={data.Title}
               width={500}
@@ -377,7 +254,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
           )}
 
           {data?.Type === "Audio" && (
-            <Image
+            <GatewayImage
               src={data.ThumbnailURL as string}
               alt={data.Title}
               width={500}
@@ -398,7 +275,7 @@ const MoreDetails = () => {
   return (
     <div className="hidden flex-row items-center justify-between gap-4 text-zinc-600 sm:flex">
       <span>more</span>
-      <ChevronsDown className="h-6 w-6 " />
+      <ChevronsDown className="h-6 w-6" />
       <span>details</span>
     </div>
   );
@@ -406,10 +283,7 @@ const MoreDetails = () => {
 
 const CC0Details = () => {
   return (
-    <div
-      className="
-    mt-4 flex flex-row items-center justify-center gap-2 text-xs text-zinc-600"
-    >
+    <div className="mt-4 flex flex-row items-center justify-center gap-2 text-xs text-zinc-600">
       this work is marked with{" "}
       <Link
         href="https://creativecommons.org/publicdomain/zero/1.0/"
@@ -423,7 +297,7 @@ const CC0Details = () => {
         href="https://creativecommons.org/publicdomain/zero/1.0/"
         target="_blank"
         rel="license noopener noreferrer"
-      ></a>
+      />
     </div>
   );
 };

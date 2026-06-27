@@ -12,15 +12,12 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { shuffle, slugify } from "@/lib/utils";
-import useLocalStorage from "@/hooks/use-local-storage";
-import va from "@vercel/analytics";
+import { shuffle, slugify } from "@/lib/metadata";
 import Cursor from "@/components/ui/cursor";
 import Ticker from "@/components/ui/ticker";
-import ConnectButton from "@/components/web3/connect-button";
 import { useInView } from "framer-motion";
-import Image from "next/image";
-import { DEV_MODE } from "@/lib/constant";
+import GatewayImage from "@/components/ui/gateway-image";
+import { DEV_MODE } from "@/lib/constants";
 
 import {
   ContextMenu,
@@ -50,7 +47,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
   const [data, setData] = useState<Item[]>([]);
   const [trimmedData, setTrimmedData] = useState<Item[]>([]);
   const [types, setTypes] = useState<string[]>([]);
-  const [query, setQuery] = useLocalStorage("query", "");
+  const [query, setQuery] = useState("");
 
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,11 +72,11 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
   const loadMoreData = () => {
     if (trimmedData) {
       const nextPageData = data.slice(page * limit, (page + 1) * limit);
-      setTrimmedData((trimmedData) => [...trimmedData, ...nextPageData]);
-      if (trimmedData.length === data.length) {
+      setTrimmedData((prev) => [...prev, ...nextPageData]);
+      if (trimmedData.length >= data.length) {
         return;
       }
-      setPage((prevPage) => prevPage + 1);
+      setPage((prev) => prev + 1);
     }
   };
 
@@ -108,23 +105,19 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
             item.Filetype?.toLowerCase().includes(lowerCaseSearchQuery) ||
             item.Description?.toLowerCase().includes(lowerCaseSearchQuery) ||
             item.ENS?.toLowerCase().includes(lowerCaseSearchQuery) ||
-            item.Tags?.map((e) => e.toLowerCase()).includes(
-              lowerCaseSearchQuery
-            )
+            item.Tags?.map((e) => e.toLowerCase()).includes(lowerCaseSearchQuery)
           );
         });
         setQuery(searchQuery);
 
         if (searchQuery === "cc0") {
-          const finalData = shuffle(initialData);
-          setData(finalData);
+          setData(shuffle(initialData));
         } else {
-          const finalData = shuffle(filteredData);
-          setData(finalData);
+          setData(shuffle(filteredData));
         }
       }
     },
-    [setQuery, initialData]
+    [initialData]
   );
 
   const handleSearchBar = useCallback(
@@ -139,9 +132,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
             item.Filetype?.toLowerCase().includes(lowerCaseSearchQuery) ||
             item.Description?.toLowerCase().includes(lowerCaseSearchQuery) ||
             item.ENS?.toLowerCase().includes(lowerCaseSearchQuery) ||
-            item.Tags?.map((e) => e.toLowerCase()).includes(
-              lowerCaseSearchQuery
-            )
+            item.Tags?.map((e) => e.toLowerCase()).includes(lowerCaseSearchQuery)
           );
         });
         setQuery(searchQuery);
@@ -150,15 +141,13 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
         }
 
         if (searchQuery === "cc0") {
-          const finalData: Item[] = shuffle(initialData);
-          setData(finalData);
+          setData(shuffle(initialData));
         } else {
-          const finalData: Item[] = shuffle(filteredData);
-          setData(finalData);
+          setData(shuffle(filteredData));
         }
       }
     },
-    [setQuery, initialData]
+    [initialData]
   );
 
   const handleTagSearch = useCallback(
@@ -177,15 +166,13 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
         }
 
         if (searchQuery === "cc0") {
-          const finalData: Item[] = shuffle(initialData);
-          setData(finalData);
+          setData(shuffle(initialData));
         } else {
-          const finalData: Item[] = shuffle(filteredData);
-          setData(finalData);
+          setData(shuffle(filteredData));
         }
       }
     },
-    [setQuery, initialData]
+    [initialData]
   );
 
   const handleFormatSearch = useCallback(
@@ -201,15 +188,13 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           inputRef.current.value = searchQuery.toLowerCase();
         }
         if (searchQuery === "cc0") {
-          const finalData: Item[] = shuffle(initialData);
-          setData(finalData);
+          setData(shuffle(initialData));
         } else {
-          const finalData: Item[] = shuffle(filteredData);
-          setData(finalData);
+          setData(shuffle(filteredData));
         }
       }
     },
-    [setQuery, initialData]
+    [initialData]
   );
 
   const handleTypeSearch = useCallback(
@@ -225,29 +210,23 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           inputRef.current.value = searchQuery.toLowerCase();
         }
         if (searchQuery === "cc0" || searchQuery === "all") {
-          const finalData: Item[] = shuffle(initialData);
-          setData(finalData);
+          setData(shuffle(initialData));
         } else {
-          const finalData: Item[] = shuffle(filteredData);
-          setData(finalData);
+          setData(shuffle(filteredData));
         }
       }
     },
-    [setQuery, initialData]
+    [initialData]
   );
 
   const handleRandomData = () => {
-    va.track("random-data");
     if (initialData) {
       const tagsList = Array.from(
         new Set(
           initialData
-            .map((item) => {
-              if (!item.Tags) return null;
-              return item.Tags;
-            })
+            .map((item) => item.Tags ?? [])
             .flat()
-            .filter((e) => e)
+            .filter(Boolean)
         )
       );
 
@@ -255,34 +234,23 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
         Math.floor(Math.random() * tagsList.length)
       ] as string;
 
-      const randomTagData = initialData.filter((item) => {
-        if (!item.Tags) return false;
-        return item.Tags.includes(randomTag);
-      });
+      if (!randomTag) return;
+
+      const randomTagData = initialData.filter((item) =>
+        item.Tags?.includes(randomTag)
+      );
       setQuery(randomTag.toLowerCase());
       if (inputRef.current) {
         inputRef.current.value = randomTag.toLowerCase();
       }
-      if (randomTag === "cc0") {
-        const finalData = shuffle(randomTagData);
-        setData(finalData);
-      } else {
-        const finalData = shuffle(randomTagData);
-        setData(finalData);
-      }
+      setData(shuffle(randomTagData));
     }
   };
 
   useEffect(() => {
     if (initialData) {
       const typesList: string[] = Array.from(
-        new Set(
-          initialData
-            .map((item) => {
-              return item.Type;
-            })
-            .filter((e) => e)
-        )
+        new Set(initialData.map((item) => item.Type).filter(Boolean))
       );
       typesList.push("all");
       setTypes(typesList);
@@ -299,14 +267,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
     if (initialData && query && !typeSearch && !formatSearch && !tagSearch) {
       handleSearchBar(query);
     }
-  }, [
-    initialData,
-    query,
-    handleSearchBar,
-    typeSearch,
-    formatSearch,
-    tagSearch,
-  ]);
+  }, [initialData, query, handleSearchBar, typeSearch, formatSearch, tagSearch]);
 
   useEffect(() => {
     if (initialData && search) {
@@ -342,31 +303,16 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
     };
   }, []);
 
-  // useEffect(() => {
-  //   if (!search || !tagSearch || !formatSearch || !typeSearch) {
-  //     if (inputRef.current) {
-  //       inputRef.current.focus();
-  //     }
-  //   }
-  // }, [search, tagSearch, formatSearch, typeSearch]);
-
   return (
     <>
       <header className="fixed z-10 flex w-full flex-row items-center justify-between px-8 sm:px-20">
         <Link href="/" className="flex gap-2">
-          <Image
-            src="https://cc0-lib.wtf/cc0lib.svg"
+          <img
+            src="/cc0lib-h.svg"
             alt="cc0lib logo"
-            width={160}
-            height={160}
-            className="block w-16 sm:hidden"
-          />
-          <Image
-            src="https://cc0-lib.wtf/cc0lib-h.svg"
-            alt="cc0lib logo horizontal"
-            width={160}
-            height={160}
-            className="hidden w-40 sm:block"
+            width={394}
+            height={49}
+            className="block h-auto w-40"
           />
         </Link>
         <ul className="flex items-center gap-4">
@@ -375,7 +321,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
               href="/fav"
               className="group flex flex-row items-center gap-2"
             >
-              <span className=" duration-250 hidden opacity-0 transition-all ease-linear group-hover:opacity-100 sm:block">
+              <span className="duration-250 hidden opacity-0 transition-all ease-linear group-hover:opacity-100 sm:block">
                 fav
               </span>
               <Heart className="h-8 w-8 group-hover:stroke-prim" />
@@ -392,21 +338,18 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
               <Info className="h-8 w-8 group-hover:stroke-prim" />
             </Link>
           </li>
-          <span className="sm:ml-8">
-            <ConnectButton />
-          </span>
         </ul>
       </header>
 
       <div className="mt-16">
         {data && data.length > 0 && data.length < 2 && (
           <p className="bg-zinc-800 px-4 py-2 text-center font-chakra text-sm uppercase">
-            {data?.length} result
+            {data.length} result
           </p>
         )}
         {data && data.length > 1 && (
           <p className="bg-zinc-800 px-4 py-2 text-center font-chakra text-sm uppercase">
-            {data?.length} results
+            {data.length} results
           </p>
         )}
       </div>
@@ -415,117 +358,114 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
 
       {trimmedData && (
         <div
-          className={`masonry ${trimmedData.length < 2 && "w-full max-w-xl"}  ${
-            trimmedData.length == 2 && "sm:masonry-sm w-full max-w-4xl"
+          className={`masonry ${trimmedData.length < 2 && "w-full max-w-xl"} ${
+            trimmedData.length === 2 && "sm:masonry-sm w-full max-w-4xl"
           } ${
             trimmedData.length > 2 &&
             "md:masonry-md 2xl:masonry-lg my-16 max-w-none"
           } my-16 space-y-6`}
         >
-          {trimmedData.map((item) => {
-            return (
-              <ContextMenu key={item.id}>
-                <ContextMenuTrigger className="group relative flex h-auto w-full break-inside-avoid">
-                  <Link key={item.id} href={`/${slugify(item.Title)}`}>
-                    <Image
-                      src={item.ThumbnailURL as string}
-                      alt={item.Title}
-                      width={500}
-                      height={500}
-                      loading="lazy"
-                      className="h-auto max-w-sm rounded-sm opacity-80 transition-all duration-100 ease-in-out hover:opacity-100 hover:ring-2 hover:ring-prim hover:ring-offset-1 hover:ring-offset-zinc-900"
-                    />
-                    <h1 className="absolute right-4 top-4 hidden bg-zinc-800 bg-opacity-50 px-3 py-1 font-chakra uppercase text-white backdrop-blur-sm group-hover:block">
-                      {item.Filetype}
-                    </h1>
-                  </Link>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="border-none bg-zinc-800">
-                  <ContextMenuItem
-                    className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim"
-                    onClick={() => {
-                      if (item.Type === "Image" || item.Type === "GIF") {
-                        console.log(item.ThumbnailURL);
-                        window.open(item.ThumbnailURL, "_blank");
-                      } else {
-                        window.open(item.File, "_blank");
-                      }
-                    }}
-                  >
-                    Download {item.Filetype}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim"
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        item.Type === "Image" || item.Type === "GIF"
-                          ? item.ThumbnailURL!
-                          : item.File!
-                      );
-                    }}
-                  >
-                    Copy {item.Type} URL
-                  </ContextMenuItem>
-                  <ContextMenuSeparator className="bg-zinc-700 focus:bg-prim" />
+          {trimmedData.map((item, index) => (
+            <ContextMenu key={`${item.id}-${index}`}>
+              <ContextMenuTrigger className="group relative flex h-auto w-full break-inside-avoid">
+                <Link key={`${item.id}-${index}`} href={`/${slugify(item.Title)}`}>
+                  <GatewayImage
+                    src={item.ThumbnailURL as string}
+                    alt={item.Title}
+                    width={500}
+                    height={500}
+                    loading="lazy"
+                    className="h-auto max-w-sm rounded-sm opacity-80 transition-all duration-100 ease-in-out hover:opacity-100 hover:ring-2 hover:ring-prim hover:ring-offset-1 hover:ring-offset-zinc-900"
+                  />
+                  <h1 className="absolute right-4 top-4 hidden bg-zinc-800 bg-opacity-50 px-3 py-1 font-chakra uppercase text-white backdrop-blur-sm group-hover:block">
+                    {item.Filetype}
+                  </h1>
+                </Link>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="border-none bg-zinc-800">
+                <ContextMenuItem
+                  className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim"
+                  onClick={() => {
+                    if (item.Type === "Image" || item.Type === "GIF") {
+                      window.open(item.ThumbnailURL, "_blank");
+                    } else {
+                      window.open(item.File, "_blank");
+                    }
+                  }}
+                >
+                  Download {item.Filetype}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      item.Type === "Image" || item.Type === "GIF"
+                        ? item.ThumbnailURL!
+                        : item.File!
+                    );
+                  }}
+                >
+                  Copy {item.Type} URL
+                </ContextMenuItem>
+                <ContextMenuSeparator className="bg-zinc-700 focus:bg-prim" />
 
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
+                    Tags
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="border-none bg-zinc-800">
+                    <ContextMenuLabel className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
+                      {item.Tags.join(", ")}
+                    </ContextMenuLabel>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                {item.Source && (
                   <ContextMenuSub>
                     <ContextMenuSubTrigger className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                      Tags
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent className="border-none bg-zinc-800">
-                      <ContextMenuLabel className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                        {item.Tags.join(", ")}
-                      </ContextMenuLabel>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  {item.Source && (
-                    <ContextMenuSub>
-                      <ContextMenuSubTrigger className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                        Source
-                      </ContextMenuSubTrigger>
-                      <ContextMenuSubContent className="border-none bg-zinc-800">
-                        <ContextMenuLabel className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                          <Link
-                            href={item.Source as Route}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:text-prim hover:underline"
-                          >
-                            {item.Source}
-                          </Link>
-                        </ContextMenuLabel>
-                      </ContextMenuSubContent>
-                    </ContextMenuSub>
-                  )}
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                      Submitted by
+                      Source
                     </ContextMenuSubTrigger>
                     <ContextMenuSubContent className="border-none bg-zinc-800">
                       <ContextMenuLabel className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
                         <Link
-                          href={
-                            item["Social Link"]
-                              ? (item["Social Link"] as Route)
-                              : "/info"
-                          }
+                          href={item.Source as Route}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="hover:text-prim hover:underline"
                         >
-                          {item.ENS ?? "cc0-lib"}
+                          {item.Source}
                         </Link>
                       </ContextMenuLabel>
                     </ContextMenuSubContent>
                   </ContextMenuSub>
-                  <ContextMenuSeparator className="bg-zinc-700 focus:bg-prim" />
-                  <ContextMenuItem className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                    <Link href={`/${slugify(item.Title)}`}>More info</Link>
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })}
+                )}
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
+                    Submitted by
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="border-none bg-zinc-800">
+                    <ContextMenuLabel className="font-jetbrains font-light text-zinc-200 focus:bg-prim">
+                      <Link
+                        href={
+                          item["Social Link"]
+                            ? (item["Social Link"] as Route)
+                            : "/info"
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-prim hover:underline"
+                      >
+                        {item.ENS ?? "cc0-lib"}
+                      </Link>
+                    </ContextMenuLabel>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSeparator className="bg-zinc-700 focus:bg-prim" />
+                <ContextMenuItem className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim">
+                  <Link href={`/${slugify(item.Title)}`}>More info</Link>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          ))}
         </div>
       )}
       <div ref={loadingRef} />
@@ -539,7 +479,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           type="text"
           autoComplete="off"
           autoCorrect="off"
-          className="duration-250 focus:ring-none peer pointer-events-auto mx-4 h-20 w-full bg-transparent px-6 font-rubik text-4xl text-white drop-shadow-md transition-all ease-linear selection:bg-zinc-800 selection:text-sec placeholder:text-zinc-600 focus:rounded-sm focus:bg-zinc-800 focus:bg-opacity-50 focus:outline-none focus:backdrop-blur-md sm:mx-20 sm:h-40 sm:max-w-xl sm:text-8xl"
+          className="duration-250 mx-4 h-20 w-full bg-transparent px-6 font-rubik text-4xl text-white drop-shadow-md transition-all ease-linear placeholder:text-zinc-600 focus:rounded-sm focus:bg-zinc-800 focus:bg-opacity-50 focus:outline-none focus:backdrop-blur-md sm:mx-20 sm:h-40 sm:max-w-xl sm:text-8xl"
           placeholder="search here"
         />
         <span className="duration-250 z-20 mx-20 -mt-6 hidden w-max bg-zinc-900 text-zinc-700 opacity-0 transition-all ease-linear peer-placeholder-shown:opacity-100 peer-focus:opacity-0 sm:block sm:px-8 sm:py-2">
@@ -549,7 +489,6 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
       <footer className="fixed bottom-0 mb-12 flex w-full flex-row items-center justify-between px-12 sm:px-20">
         <div
           className="group flex cursor-pointer flex-col items-center gap-2 sm:hidden"
-          id="filterMobile"
           onClick={() => {
             filterPanelRef.current?.classList.remove("hidden");
           }}
@@ -558,33 +497,27 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
         </div>
         <div
           className="group hidden cursor-pointer flex-row items-center gap-2 sm:flex"
-          id="filter"
         >
           <LayoutDashboard className="h-8 w-8 group-hover:stroke-prim" />
 
           <div className="absolute ml-12">
             {types && (
               <ul className="group hidden flex-col items-center gap-1 lowercase sm:flex sm:flex-row">
-                {types.map((type) => {
-                  return (
-                    <Link
-                      key={type}
-                      href={`/?type=${type.toLowerCase()}`}
-                      className="opacity-0 group-hover:opacity-100 hover:text-prim"
-                    >
-                      {type}
-                    </Link>
-                  );
-                })}
+                {types.map((type) => (
+                  <Link
+                    key={type}
+                    href={`/?type=${type.toLowerCase()}`}
+                    className="opacity-0 group-hover:opacity-100 hover:text-prim"
+                  >
+                    {type}
+                  </Link>
+                ))}
               </ul>
             )}
           </div>
         </div>
-        <div onClick={handleRandomData} data-umami-event="random-data">
-          <div
-            className="group flex cursor-pointer flex-row items-center gap-2"
-            id="random"
-          >
+        <div onClick={handleRandomData}>
+          <div className="group flex cursor-pointer flex-row items-center gap-2">
             <Sparkles className="h-8 w-8 group-hover:stroke-prim" />
             <div className="absolute ml-12">
               <span className="duration-250 hidden opacity-0 transition-all ease-linear group-hover:opacity-100 sm:block">
@@ -594,14 +527,10 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           </div>
         </div>
         <Link href="/contribute">
-          <div
-            className="group relative flex flex-row items-center gap-2"
-            id="contribute"
-          >
+          <div className="group relative flex flex-row items-center gap-2">
             <span className="duration-250 absolute right-12 hidden opacity-0 transition-all ease-linear group-hover:opacity-100 sm:block">
               contribute
             </span>
-
             <HelpingHand className="h-8 w-8 group-hover:stroke-prim" />
           </div>
         </Link>
@@ -627,23 +556,21 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
         ref={filterPanelRef}
         className="fixed inset-0 left-0 top-0 z-30 hidden h-full w-screen flex-col bg-zinc-800/90 backdrop-blur-sm sm:hidden"
       >
-        <div className="h-screen max-w-full ">
+        <div className="h-screen max-w-full">
           {types && (
-            <ul className="flex h-screen w-full flex-col items-center justify-center gap-4 ">
-              {types.map((type) => {
-                return (
-                  <Link
-                    key={type}
-                    onClick={() => {
-                      filterPanelRef.current?.classList.add("hidden");
-                    }}
-                    href={`/?type=${type.toLowerCase()}`}
-                    className=" text-4xl lowercase hover:text-prim"
-                  >
-                    {type}
-                  </Link>
-                );
-              })}
+            <ul className="flex h-screen w-full flex-col items-center justify-center gap-4">
+              {types.map((type) => (
+                <Link
+                  key={type}
+                  onClick={() => {
+                    filterPanelRef.current?.classList.add("hidden");
+                  }}
+                  href={`/?type=${type.toLowerCase()}`}
+                  className="text-4xl lowercase hover:text-prim"
+                >
+                  {type}
+                </Link>
+              ))}
             </ul>
           )}
 
@@ -663,21 +590,13 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
   );
 };
 
+export default FrontPage;
+
 const FrontPageTicker = () => {
   return (
     <Ticker position="bottom">
       <div className="flex flex-row">
-        <div className="mr-64 flex flex-row gap-1 ">
-          <Link
-            href="/dashboard"
-            rel="noreferrer noopener"
-            className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-          >
-            dashboard
-          </Link>{" "}
-          is now live. you can add, edit and view your submissions
-        </div>
-        <div className="mr-64 flex flex-row gap-1 ">
+        <div className="mr-64 flex flex-row gap-1">
           Thank you Nouns DAO contributors and supporters.{" "}
           <Link
             href="https://nouns.wtf/vote/343"
@@ -689,7 +608,7 @@ const FrontPageTicker = () => {
           </Link>{" "}
           passed!
         </div>
-        <div className="mr-64 flex flex-row gap-1 ">
+        <div className="mr-64 flex flex-row gap-1">
           submit your{" "}
           <Link
             href="/contribute"
@@ -699,24 +618,11 @@ const FrontPageTicker = () => {
             cc0 content
           </Link>
         </div>
-        <div className="mr-64 flex flex-row gap-1 ">a nouns thing ⌐◨-◨</div>
-        {/* <div className="mr-64 flex flex-row gap-1 ">
-          new{" "}
-          <Link
-            href="/ai"
-            rel="noreferrer noopener"
-            className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-          >
-            ai-assisted search
-          </Link>{" "}
-          feature is live
-        </div> */}
-        <div className="mr-64 flex flex-row gap-1 ">
+        <div className="mr-64 flex flex-row gap-1">a nouns thing ⌐◨-◨</div>
+        <div className="mr-64 flex flex-row gap-1">
           cc0-lib is funded by nouns dao
         </div>
       </div>
     </Ticker>
   );
 };
-
-export default FrontPage;

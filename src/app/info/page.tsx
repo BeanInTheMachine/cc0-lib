@@ -124,19 +124,6 @@ const InfoPage = () => {
         </Card>
 
         <Card>
-          <Title>changelog</Title>
-          <Description>
-            check{" "}
-            <Link
-              href="/log"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              what&apos;s new
-            </Link>
-          </Description>
-        </Card>
-
-        <Card>
           <Title>sitemap</Title>
           <Description>
             <Link
@@ -186,32 +173,6 @@ const InfoPage = () => {
               className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
             >
               raycast extension
-            </Link>
-          </Description>
-        </Card>
-
-        <Card>
-          <Title>public api</Title>
-          <Description>
-            want to proliferate cc0 content? use our{" "}
-            <Link
-              href="/api"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              public api
-            </Link>
-          </Description>
-        </Card>
-
-        <Card>
-          <Title>companion</Title>
-          <Description>
-            want to upload file? use our macOS{" "}
-            <Link
-              href="/companion"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              companion app
             </Link>
           </Description>
         </Card>
