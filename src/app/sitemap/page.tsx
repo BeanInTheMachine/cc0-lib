@@ -1,7 +1,7 @@
 import Container from "@/components/ui/container";
 import { staticPages } from "@/lib/constants";
 import { getSiteUrl } from "@/lib/site-url";
-import { readMetadata, shuffle, slugify } from "@/lib/metadata";
+import { readMetadata, shuffle, slugify, getItemSlug } from "@/lib/metadata";
 import Link from "next/link";
 
 export const generateMetadata = () => {
@@ -115,7 +115,7 @@ const SiteMapPage = () => {
         ))}
         {data.map((item) => (
           <Link
-            href={`/${slugify(item.Title)}`}
+            href={`/${getItemSlug(item)}`}
             className="mr-4 break-all text-2xl lowercase text-zinc-600 hover:text-prim sm:text-4xl"
             key={item.id}
           >

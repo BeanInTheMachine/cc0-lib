@@ -12,7 +12,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
-import { shuffle, slugify } from "@/lib/metadata";
+import { shuffle, slugify, getItemSlug } from "@/lib/metadata";
 import Cursor from "@/components/ui/cursor";
 import Ticker from "@/components/ui/ticker";
 import { useInView } from "framer-motion";
@@ -53,7 +53,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [page, setPage] = useState(1);
-  const limit = 6;
+  const limit = 18;
   const loadingRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(loadingRef);
 
@@ -368,13 +368,14 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           {trimmedData.map((item, index) => (
             <ContextMenu key={`${item.id}-${index}`}>
               <ContextMenuTrigger className="group relative flex h-auto w-full break-inside-avoid">
-                <Link key={`${item.id}-${index}`} href={`/${slugify(item.Title)}`}>
+                <Link key={`${item.id}-${index}`} href={`/${getItemSlug(item)}`}>
                   <GatewayImage
                     src={item.ThumbnailURL as string}
                     alt={item.Title}
                     width={500}
                     height={500}
                     loading="lazy"
+                    filetype={item.Filetype}
                     className="h-auto max-w-sm rounded-sm opacity-80 transition-all duration-100 ease-in-out hover:opacity-100 hover:ring-2 hover:ring-prim hover:ring-offset-1 hover:ring-offset-zinc-900"
                   />
                   <h1 className="absolute right-4 top-4 hidden bg-zinc-800 bg-opacity-50 px-3 py-1 font-chakra uppercase text-white backdrop-blur-sm group-hover:block">
@@ -461,7 +462,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
                 </ContextMenuSub>
                 <ContextMenuSeparator className="bg-zinc-700 focus:bg-prim" />
                 <ContextMenuItem className="cursor-pointer font-jetbrains font-light text-zinc-200 focus:bg-prim">
-                  <Link href={`/${slugify(item.Title)}`}>More info</Link>
+                  <Link href={`/${getItemSlug(item)}`}>More info</Link>
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

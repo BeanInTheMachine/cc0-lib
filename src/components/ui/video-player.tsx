@@ -83,12 +83,14 @@ const VideoPlayer = ({ data, src, className }: VideoPlayerProps) => {
     <div className="relative w-full max-w-6xl px-2 py-16 text-sm sm:p-16 sm:text-lg">
       <video
         src={src}
+        poster={data.ThumbnailURL}
         className={`${className} peer hidden h-auto w-full object-cover drop-shadow-md sm:block`}
         id="video-player"
         onClick={togglePlay}
       />
       <video
         src={src}
+        poster={data.ThumbnailURL}
         className={`${className} peer block h-auto w-full object-cover drop-shadow-md sm:hidden`}
         id="video-player-mobile"
         onClick={togglePlay}

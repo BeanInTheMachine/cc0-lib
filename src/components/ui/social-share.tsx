@@ -1,6 +1,6 @@
 "use client";
 
-import { slugify } from "@/lib/utils";
+import { getItemSlug } from "@/lib/metadata";
 import { Mail, Share, TwitterIcon } from "lucide-react";
 import { Route } from "next";
 import { EmailShareButton, TwitterShareButton } from "next-share";
@@ -27,14 +27,14 @@ const SocialShare = ({ data, baseUrl, className }: SocialShareProps) => {
         <TwitterShareButton
           title={`Check this CC0 asset i found on @cc0lib! ${data.Title}`}
           blankTarget={true}
-          url={`${baseUrl}/${slugify(data.Title)}`}
+          url={`${baseUrl}/${getItemSlug(data)}`}
         >
           <TwitterIcon className="h-4 w-4 self-center opacity-0 hover:stroke-prim hover:text-prim group-hover:opacity-100" />
         </TwitterShareButton>
 
         <WarpcastShare
           text={`${data.Title}`}
-          embed={`${baseUrl}/${slugify(data.Title)}`}
+          embed={`${baseUrl}/${getItemSlug(data)}`}
         >
           <svg
             width="32"
@@ -77,10 +77,10 @@ const SocialShare = ({ data, baseUrl, className }: SocialShareProps) => {
           subject={`Check out this CC0 work: ${data.Title}`}
           body={`Hi there,\n\nI wanted to share this amazing CC0 piece of media called "${
             data.Title
-          }". You can find it at: ${baseUrl}/${slugify(
-            data.Title
+          }". You can find it at: ${baseUrl}/${getItemSlug(
+            data
           )}.\n\nEnjoy!\n`}
-          url={`${baseUrl}/${slugify(data.Title)}`}
+          url={`${baseUrl}/${getItemSlug(data)}`}
           blankTarget={true}
         >
           <Mail className="h-4 w-4 self-center opacity-0 hover:stroke-prim hover:text-prim group-hover:opacity-100" />

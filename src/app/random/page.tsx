@@ -1,6 +1,6 @@
 import DownloadFile from "@/components/data/dl";
 import Container from "@/components/ui/container";
-import { readMetadata, slugify } from "@/lib/metadata";
+import { readMetadata, slugify, getItemSlug } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
 import { MoreHorizontal, RefreshCcw } from "lucide-react";
 import GatewayImage from "@/components/ui/gateway-image";
@@ -62,6 +62,7 @@ const RandomPage = () => {
             alt="random image"
             width={384}
             height={384}
+            filetype={randomItem.Filetype}
             className="h-96 w-96 object-contain p-2 ring-1 ring-zinc-800 ring-offset-1 ring-offset-zinc-800 hover:ring-prim"
           />
         </div>
@@ -82,7 +83,7 @@ const RandomPage = () => {
               </button>
             </Link>
             <Link
-              href={`/${slugify(randomItem.Title)}`}
+              href={`/${getItemSlug(randomItem)}`}
               className="hover:text-prim"
             >
               <MoreHorizontal className="ml-2 inline-block h-4 w-4 items-center" />

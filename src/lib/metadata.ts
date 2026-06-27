@@ -6,8 +6,22 @@ export function readMetadata(): Item[] {
 
 export function getItemBySlug(slug: string): Item | null {
   const items = readMetadata();
+  const parts = slug.split("-");
+  const suffix = parts[parts.length - 1];
+  if (suffix && suffix.length >= 6) {
+    const match = items.find((item) =>
+      item.id.toLowerCase().endsWith(suffix.toLowerCase())
+    );
+    if (match) return match;
+  }
   const match = items.find((item) => slugify(item.Title) === slug);
   return match ?? null;
+}
+
+export function getItemSlug(item: Item): string {
+  const titleSlug = slugify(item.Title);
+  const idSuffix = item.id.slice(-6);
+  return `${titleSlug}-${idSuffix}`;
 }
 
 export function getLeaderboard(items: Item[]): {

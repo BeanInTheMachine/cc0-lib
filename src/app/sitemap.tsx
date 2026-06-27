@@ -1,12 +1,12 @@
 import { staticPages } from "@/lib/constants";
-import { readMetadata, slugify } from "@/lib/metadata";
+import { readMetadata, getItemSlug } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
 
 export default function sitemap() {
   const url = getSiteUrl();
   const itemData = readMetadata().filter((item) => item.Status === "published");
   const items = itemData.map((item) => ({
-    url: `${url}/${slugify(item.Title)}`,
+    url: `${url}/${getItemSlug(item)}`,
     lastModified: new Date().toISOString(),
   }));
 

@@ -110,6 +110,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
           alt={data.Title}
           width={768}
           height={768}
+          filetype={data.Filetype}
           className="h-auto w-full max-w-3xl object-cover px-2 py-16 shadow-md sm:w-3/4 sm:p-16"
         />
       )}
@@ -120,6 +121,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
           alt={data.Title}
           width={768}
           height={768}
+          filetype={data.Filetype}
           className="block h-auto w-full max-w-5xl object-cover px-2 py-16 shadow-md sm:hidden sm:p-16"
         />
       )}
@@ -241,6 +243,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
               alt={data.Title}
               width={500}
               height={500}
+              filetype={data.Filetype}
               className="hidden h-auto w-2/5 object-cover px-2 shadow-md lg:block"
             />
           )}
@@ -251,6 +254,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
               alt={data.Title}
               width={500}
               height={500}
+              filetype={data.Filetype}
               className="hidden h-auto w-1/3 object-cover px-2 shadow-md sm:block"
             />
           )}
@@ -261,6 +265,7 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
               alt={data.Title}
               width={500}
               height={500}
+              filetype={data.Filetype}
               className="hidden h-auto w-2/5 object-cover px-2 shadow-md sm:block"
             />
           )}
