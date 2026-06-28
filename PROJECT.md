@@ -6,10 +6,11 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 
 ## Current Status
 
-- **Code:** First rebuild complete, cleaned, and verified (`next build` green).
+- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied.
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
-- **Hosting:** Targeting Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
-- **Custom domain:** `cc0-lib.wtf` is the intended domain but is **not yet acquired** — it is still ACTIVE under the previous owner. The codebase resolves its base URL dynamically (see below), so attaching the domain later requires no code change.
+- **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
+- **Custom domain:** `cc0-lib.wtf` is the intended domain but is **not yet acquired**. The codebase resolves its base URL dynamically (see below).
+- **Resurrected by:** coolbeans1r.eth
 - **Version:** `2.0.0`.
 
 ## Architectural Decisions
@@ -66,6 +67,12 @@ npx tsc --noEmit
 
 # Import legacy data (one-time)
 npm run import-legacy     # Runs scripts/import-legacy.ts
+
+# Generate video thumbnails (one-time, requires ffmpeg)
+npx tsx scripts/generate-video-thumbnails.ts
+
+# Deduplicate metadata (one-time)
+npx tsx scripts/dedup-metadata.ts
 ```
 
 ## Environment Variables (`.env`)
@@ -92,16 +99,19 @@ The app works without any env vars for read-only browsing.
 | File | Purpose |
 |------|---------|
 | `scripts/import-legacy.ts` | One-time script: queries Arweave GraphQL for `App: "cc0-lib uploader"` transactions, builds `metadata.json` (bare tx URLs) |
-| `src/data/metadata.json` | Static catalog — array of `Item` objects (2,797 entries after dedup) |
-| `src/lib/metadata.ts` | Central data access: `readMetadata()`, `getItemBySlug()`, `getLeaderboard()`, `slugify()`, `shuffle()`, `shortDomainName()` |
+| `scripts/generate-video-thumbnails.ts` | One-time script: downloads each video, extracts a frame at 1s (or midpoint), saves to `public/thumbnails/`, patches `ThumbnailURL` in `metadata.json` |
+| `scripts/dedup-metadata.ts` | One-time script: removes duplicate items sharing same title + type + filetype + ENS uploader |
+| `src/data/metadata.json` | Static catalog — array of `Item` objects (1,916 entries after dedup of 2,797 → 1,916) |
+| `src/lib/metadata.ts` | Central data access: `readMetadata()`, `getItemBySlug()`, `getItemSlug()`, `getLeaderboard()`, `slugify()`, `shuffle()`, `shortDomainName()` |
 | `src/lib/gateway-url.ts` | `ARWEAVE_GATEWAYS` list + `extractArweaveId()` |
 | `src/lib/site-url.ts` | `getSiteUrl()` — env-driven base URL resolver |
 | `src/lib/constants.ts` | Static page list, `DEV_MODE` |
 | `src/app/api/submit/route.ts` | Serverless submit endpoint — GitHub API commit flow |
 | `src/app/robots.ts` | Dynamic robots (sitemap URL follows `getSiteUrl()`) |
 | `src/app/sitemap.tsx` | Dynamic XML sitemap (URLs from `getSiteUrl()`) |
-| `src/components/ui/gateway-image.tsx` | Client component: `<img>` with `onError` fallback rotation through Arweave gateways |
+| `src/components/ui/gateway-image.tsx` | Client component: `<img>` with `onError` Arweave gateway rotation; styled file-type fallback cards (icon + title) for non-image types; `filetype` prop support |
 | `public/cc0lib.svg` / `cc0lib-h.svg` | Real brand logos (restored from git history) |
+| `public/thumbnails/` | 7 generated video thumbnail JPGs (committed to repo) |
 | `.env.example` | Documented env vars |
 
 ### Key Modified Files
@@ -109,22 +119,25 @@ The app works without any env vars for read-only browsing.
 | File | Changes |
 |------|---------|
 | `src/app/page.tsx` | `readMetadata()`; metadata URLs via `getSiteUrl()` |
-| `src/app/[slug]/page.tsx` | `getItemBySlug()`; Next 16 `params` Promise; `next/image` → `GatewayImage`; metadata + `SocialShare baseUrl` via `getSiteUrl()` |
-| `src/app/front-page.tsx` | `<GatewayImage>`; removed Web3/analytics; real horizontal logo |
-| `src/app/fav/*` | `readMetadata()`; `<GatewayImage>`; localStorage-only likes |
+| `src/app/[slug]/page.tsx` | `getItemBySlug()`; Next 16 `params` Promise; `next/image` → `GatewayImage`; metadata + `SocialShare baseUrl` via `getSiteUrl()`; links use `getItemSlug()`; GatewayImage calls pass `filetype` prop; video poster attribute |
+| `src/app/front-page.tsx` | `<GatewayImage>` with `filetype` prop; links use `getItemSlug()` unique slugs; gallery limit 6→18; removed Web3/analytics; real horizontal logo; "coolbeans loves you" ticker segment |
+| `src/app/fav/*` | `readMetadata()`; `<GatewayImage>` with `filetype` prop; localStorage-only likes; links use `getItemSlug()` |
 | `src/app/leaderboard/page.tsx` | `readMetadata()` + `getLeaderboard()` |
-| `src/app/random/page.tsx` | `readMetadata()`; `next/image` → `GatewayImage`; site URL |
-| `src/app/sitemap.tsx` / `sitemap/page.tsx` | `readMetadata()`; URLs via `getSiteUrl()` |
-| `src/app/info/page.tsx` | Removed dead-route cards (`/log`, `/api`, `/companion`); site URL |
-| `src/app/contribute/page.tsx` | Removed dead dashboard section + `/dashboard`, `/submit`, `/dashboard/uploader` links; site URL |
+| `src/app/random/page.tsx` | `readMetadata()`; `next/image` → `GatewayImage` with `filetype` prop; links use `getItemSlug()`; site URL |
+| `src/app/sitemap.tsx` / `sitemap/page.tsx` | `readMetadata()`; URLs via `getSiteUrl()` and `getItemSlug()` |
+| `src/app/info/page.tsx` | Removed dead-route cards; added "resurrected" section; updated donation/support/ideas text; farcaster links; (dead) marker on archives.wtf |
+| `src/app/contribute/page.tsx` | Removed dead dashboard section; contact section links to farcaster instead of email |
 | `src/app/privacy/page.tsx`, `disclaimer/page.tsx` | Metadata URLs via `getSiteUrl()` |
 | `src/app/layout.tsx` | Removed Web3Provider/analytics; added `metadataBase` from `getSiteUrl()` |
-| `src/components/ui/video-player.tsx` | Logo `cc0-lib.wtf` → local `/cc0lib.svg` |
-| `src/components/ui/social-share.tsx` | Share/embed URLs via injected `baseUrl` prop |
-| `src/lib/utils.ts` | Stripped dead Notion/FC/KV helpers and `bytesToString`/`copyToClipboard`; kept `cn`, `getLikedItems`, `blobSize` |
-| `next.config.js` | Removed cloudflare loader, CORS, polyfills; `remotePatterns` reduced to `api.cloudnouns.com`; `dangerouslyAllowSVG` kept |
-| `package.json` | Removed ~14 dead deps + unused UI/tooling deps; standardized on npm; v2.0.0 |
+| `src/components/ui/video-player.tsx` | Logo → local `/cc0lib.svg`; added `poster={data.ThumbnailURL}` to video elements |
+| `src/components/ui/social-share.tsx` | Share/embed URLs via `baseUrl` + `getItemSlug(data)` |
+| `src/components/ui/gateway-image.tsx` | Added `filetype` prop; styled fallback cards with lucide-react icons (FolderArchive, FileText, FileImage, File) for non-image types; fallback div for broken images |
+| `src/lib/utils.ts` | Stripped dead helpers; kept `cn`, `getLikedItems`, `blobSize` |
+| `src/lib/metadata.ts` | Added `getItemSlug(item)` — unique slugs via `title-last6chars`; updated `getItemBySlug()` to match by ID suffix with title fallback |
+| `next.config.js` | Removed cloudflare loader, CORS, polyfills; `remotePatterns` reduced |
+| `package.json` | Removed ~14 dead deps; standardized on npm; v2.0.0 |
 | `src/typing.d.ts` | Removed dead types; kept `Item`, `ItemThumbnail` |
+| `src/data/metadata.json` | Deduplicated: 2,797 → 1,916 items (881 same-title+type+filetype+ENS duplicates removed); video ThumbnailURLs point to local `/thumbnails/` |
 
 ### Deleted Files/Directories
 
@@ -186,9 +199,11 @@ Only one active route:
 3. **No user authentication.** SIWE/wagmi removed. Favorites are localStorage-only (per-device, not synced).
 4. **No comments/views.** KV-backed comments and page views removed.
 5. **No Farcaster integration / no file upload.** Removed. Users upload to Arweave independently and submit the TX ID via the API.
-6. **Catalog size.** 2,816 Arweave transactions found; 19 duplicates removed → 2,797 unique items.
-7. **Custom domain pending.** `cc0-lib.wtf` is still ACTIVE under its prior owner and not available to purchase. The site runs on `*.vercel.app` until acquired; base URLs auto-resolve via `getSiteUrl()`. Brand text and contact emails in the privacy/disclaimer/contribute pages still reference `cc0-lib.wtf`.
+6. **Catalog size.** 2,816 Arweave transactions found; 881 same-title+type+filetype+ENS duplicates removed → 1,916 unique items (7 videos, ~21 Working Files, rest Images/GIFs/Audio/3D).
+7. **Custom domain pending.** `cc0-lib.wtf` is still ACTIVE under its prior owner. The site runs on `*.vercel.app` until acquired; base URLs auto-resolve via `getSiteUrl()`.
 8. **Soft 404s.** Unmatched routes render the not-found page but return HTTP 200 (a side-effect of the `src/app/[...not-found]` catch-all workaround). Acceptable but suboptimal for SEO; may be revisitable on Next 16.
+9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
+10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
 
 ## Dependency Summary
 
@@ -198,7 +213,8 @@ Only one active route:
 ## Last Verified
 
 - `tsc --noEmit`: 0 errors
-- `eslint src/**/*.{ts,tsx}`: 0 errors (10 pre-existing warnings)
+- `eslint src/**/*.{ts,tsx}`: 0 errors (1 pre-existing warning)
 - `next build`: Compiled successfully, 15/15 pages
-- `next dev`: HTTP 200; Arweave images/videos loading via bare tx URLs + gateway fallback
+- `next dev`: HTTP 200; Arweave assets loading via bare tx URLs + gateway fallback; video thumbnails + poster; Working Files file-type cards; unique slugs
 - Pushed to `BeanInTheMachine/cc0-lib` (`main`)
+- Catalog: 1,916 items (7 video, ~21 Working Files, rest Image/GIF/Audio/3D)
