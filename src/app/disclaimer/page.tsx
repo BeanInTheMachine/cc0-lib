@@ -49,7 +49,7 @@ const DisclaimerPage = () => {
         </h1>
         <p className="text-md flex w-full max-w-prose flex-col gap-4 lowercase text-white">
           <span>
-            Thank you for visiting cc0-lib.wtf, our CC0 media website.
+            Thank you for visiting cc0-lib.xyz, our CC0 media website.
           </span>
           <span className="mb-4">
             Before you start using the content and materials provided on this
@@ -59,7 +59,7 @@ const DisclaimerPage = () => {
 
           <Point
             title="Content Ownership"
-            sub="cc0-lib.wtf serves as a platform for sharing Creative Commons Zero
+            sub="cc0-lib.xyz serves as a platform for sharing Creative Commons Zero
             (CC0) licensed content. However, we do not claim ownership or
             authorship of the content available on this website. The content is
             contributed by various individuals and entities under the CC0
@@ -69,13 +69,13 @@ const DisclaimerPage = () => {
           <Point
             title="Accuracy and Validity"
             sub=" While we strive to ensure the accuracy and validity of the content
-            available on cc0-lib.wtf, we do not guarantee its completeness,
+            available on cc0-lib.xyz, we do not guarantee its completeness,
             reliability, or timeliness. We cannot be held accountable for any
             errors, omissions, or outdated information in the content provided."
           />
           <Point
             title="Use at Your Own Risk"
-            sub="By using the content and materials from cc0-lib.wtf, you acknowledge
+            sub="By using the content and materials from cc0-lib.xyz, you acknowledge
             and agree that you do so at your own risk. We are not responsible
             for any consequences that may arise from using the content,
             including but not limited to legal issues, loss of data, or damages
@@ -84,7 +84,7 @@ const DisclaimerPage = () => {
           <Point
             title="Content Attribution"
             sub="As per the CC0 license, attribution is not required for the content
-            provided on cc0-lib.wtf. However, we encourage users to consider
+            provided on cc0-lib.xyz. However, we encourage users to consider
             giving subtle credit to the original authors or creators of the
             content whenever possible. This helps people to acknowledge their
             contributions, grow their reach and find new audiences and support a
@@ -92,7 +92,7 @@ const DisclaimerPage = () => {
           />
           <Point
             title="Third-Party Content"
-            sub="cc0-lib.wtf may include links, references, or content from
+            sub="cc0-lib.xyz may include links, references, or content from
             third-party sources for informational purposes. We are not
             responsible for the content, accuracy, or legality of any
             third-party websites or resources that may be accessed through these
@@ -101,7 +101,7 @@ const DisclaimerPage = () => {
           />
           <Point
             title="Changes to Terms"
-            sub="This disclaimer page for cc0-lib.wtf may be updated from time to
+            sub="This disclaimer page for cc0-lib.xyz may be updated from time to
             time without notice. We encourage you to review it regularly to stay
             informed about any modifications."
           />
@@ -134,9 +134,17 @@ const DisclaimerPage = () => {
 
           <span className="mt-4">
             If you have any questions or concerns regarding this disclaimer,
-            please contact us at hello[at]cc0-lib.wtf.
+            please contact us on{" "}
+            <Link
+              href="https://farcaster.xyz/coolbeans1r.eth"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
+            >
+              farcaster
+            </Link>.
           </span>
-          <span>Last updated: 25th April 2024</span>
+          <span>Last updated: 27th June 2026</span>
         </p>
       </div>
     </Container>

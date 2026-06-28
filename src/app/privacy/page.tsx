@@ -1,6 +1,7 @@
 import Container from "@/components/ui/container";
 import { getSiteUrl } from "@/lib/site-url";
 import { BookOpen, Dot } from "lucide-react";
+import Link from "next/link";
 
 export const generateMetadata = async () => {
   const title = `Privacy Policy | CC0-LIB`;
@@ -48,18 +49,18 @@ const PrivacyPage = () => {
         </h1>
         <p className="text-md flex w-full max-w-prose flex-col gap-4 lowercase text-white">
           <span>
-            Thank you for visiting cc0-lib.wtf, our CC0 media website.
+            Thank you for visiting cc0-lib.xyz, our CC0 media website.
           </span>
           <span className="mb-4">
             This Privacy Policy outlines how we collect, use, and protect your
             personal information when you access and use our platform. By using
-            cc0-lib.wtf, you consent to the practices described in this policy.
+            cc0-lib.xyz, you consent to the practices described in this policy.
           </span>
 
           <Point
             title="Information We Collect"
             subs={[
-              "Personal Information: We do not collect any personally identifiable information about you unless you voluntarily provide it to us through forms or communication channels on cc0-lib.wtf.",
+              "Personal Information: We do not collect any personally identifiable information about you unless you voluntarily provide it to us through forms or communication channels on cc0-lib.xyz.",
               "Non-Personal Information: We may collect non-personal information, such as your IP address, browser type, device information, and usage data, to analyze trends, administer the site, and gather demographic information.",
             ]}
           />
@@ -75,7 +76,7 @@ const PrivacyPage = () => {
           <Point
             title="Cookies and Tracking Technologies"
             subs={[
-              "cc0-lib.wtf uses cookies and similar tracking technologies to enhance your browsing experience. Cookies are small files stored on your device that enable certain features and functionalities. You can manage your cookie preferences through your browser settings.",
+              "cc0-lib.xyz uses cookies and similar tracking technologies to enhance your browsing experience. Cookies are small files stored on your device that enable certain features and functionalities. You can manage your cookie preferences through your browser settings.",
               "We may also use third-party analytics services that utilize cookies and other tracking technologies to collect and analyze non-personally identifiable information regarding website usage patterns.",
             ]}
           />
@@ -93,7 +94,7 @@ const PrivacyPage = () => {
           <Point
             title="Links to Third-Party Websites"
             subs={[
-              "cc0-lib.wtf may contain links to third-party websites. We are not responsible for the privacy practices or content of such websites. We encourage you to review the privacy policies of third-party sites before providing any personal information.",
+              "cc0-lib.xyz may contain links to third-party websites. We are not responsible for the privacy practices or content of such websites. We encourage you to review the privacy policies of third-party sites before providing any personal information.",
             ]}
           />
 
@@ -107,7 +108,7 @@ const PrivacyPage = () => {
           <Point
             title="Children’s Privacy"
             subs={[
-              "cc0-lib.wtf is not intended for individuals under the age of 13. We do not knowingly collect or solicit personal information from children. If we become aware that we have collected personal information from a child without parental consent, we will promptly delete it from our records.",
+              "cc0-lib.xyz is not intended for individuals under the age of 13. We do not knowingly collect or solicit personal information from children. If we become aware that we have collected personal information from a child without parental consent, we will promptly delete it from our records.",
             ]}
           />
 
@@ -122,9 +123,17 @@ const PrivacyPage = () => {
 
           <span className="mt-4">
             If you have any questions or concerns regarding this privacy policy,
-            please contact us at hello[at]cc0-lib.wtf.
+            please contact us on{" "}
+            <Link
+              href="https://farcaster.xyz/coolbeans1r.eth"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
+            >
+              farcaster
+            </Link>.
           </span>
-          <span>Last updated: 5th July 2023</span>
+          <span>Last updated: 27th June 2026</span>
         </p>
       </div>
     </Container>
