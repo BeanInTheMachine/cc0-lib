@@ -623,6 +623,7 @@ const FrontPageTicker = () => {
         <div className="mr-64 flex flex-row gap-1">
           cc0-lib is funded by nouns dao
         </div>
+        <div className="mr-64 flex flex-row gap-1">coolbeans loves you</div>
       </div>
     </Ticker>
   );
