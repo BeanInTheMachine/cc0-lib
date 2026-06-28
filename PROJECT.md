@@ -9,8 +9,8 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 - **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied.
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
 - **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
-- **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel). The apex `cc0-lib.xyz` is canonical; `www.cc0-lib.xyz` 301-redirects to it. The codebase resolves its base URL dynamically (see below).
-- **Resurrected by:** coolbeans1r.eth
+- **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel) and the domain the Farcaster manifest + account association are signed for. **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Recommended fix: make the apex the primary domain and redirect `www → apex`, so the canonical URLs (and all `miniapp-*.png` assets) serve directly without a redirect hop. The codebase resolves its base URL dynamically (see below).
+- **Resurrected by:** coolbeans1r.eth (Farcaster FID `369904`)
 - **Version:** `2.1.0`.
 
 ## Architectural Decisions
@@ -21,12 +21,15 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 | **Arweave for file storage only** | All assets permanently stored on Arweave. Multi-gateway fallback (`arweave.net`, `ar-io.net`, `permaweb.io`) for delivery resilience. |
 | **Bare Arweave tx URLs** | Assets are single data transactions served at `https://arweave.net/{txId}` — **not** path manifests. Appending the filename (`/{txId}/{filename}`) returns 404, so all `ThumbnailURL`/`File` values are the bare tx URL. |
 | **`<img>` + gateway rotation** | Arweave assets render via `GatewayImage` (plain `<img>` with `onError` gateway rotation), bypassing the Next.js image optimizer (which broke on Arweave). `next/image` is still used only for the cloudnouns cursor PFP and the video-player overlay logo. |
-| **Configurable site URL** | `getSiteUrl()` resolves the base URL in order: `NEXT_PUBLIC_SITE_URL` → Vercel's `VERCEL_PROJECT_PRODUCTION_URL` → fallback `https://cc0-lib.xyz`. Drives every canonical/OG/Twitter/sitemap/robots/share URL. Set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production so all URLs (and the future Farcaster manifest) agree on the canonical apex. |
+| **Configurable site URL** | `getSiteUrl()` resolves the base URL in order: `NEXT_PUBLIC_SITE_URL` → Vercel's `VERCEL_PROJECT_PRODUCTION_URL` → fallback `https://cc0-lib.xyz`. Drives every canonical/OG/Twitter/sitemap/robots/share URL **and the Farcaster manifest + embeds**. Set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production so all URLs agree on the canonical apex. |
 | **Vercel Free Tier hosting** | Hybrid static + single serverless function for submissions. Not a pure static export. Auto-deploys on every push to `main`. |
 | **GitHub API submit endpoint** | Serverless `POST /api/submit` uses `GITHUB_TOKEN` to fetch → append → commit `metadata.json`, triggering a Vercel redeploy. |
 | **No auth for browsing** | Public read-only gallery. Submit endpoint protected by `SUBMIT_SECRET` Bearer token. |
 | **Real brand logos** | Original `cc0lib.svg` / `cc0lib-h.svg` were recovered from git history (`/public/`); the live `cc0-lib.wtf` asset host is unreachable. |
 | **Notion data lost** | The `notion-api.splitbee.io` proxy returns HTTP 500. Rich metadata (titles, descriptions, tags) is unrecoverable. Current catalog built from Arweave transaction tags only. |
+| **Farcaster Mini App** | The gallery doubles as a Farcaster Mini App: dynamic manifest, `sdk.actions.ready()` + safe-area handling, a "save app" prompt, and `fc:miniapp`/`fc:frame` embeds. No wallet/auth/notifications — stays $0 runtime OpEx. |
+| **Per-asset embeds** | Every `/[slug]` asset page is its own shareable Mini App card (embed image = the asset's Arweave `ThumbnailURL`, fallback `miniapp-embed.png`). Drives a viral loop: any asset shared in a feed renders a launch card. |
+| **Committed account association** | The signed domain-ownership proof (`accountAssociation`) is public, non-secret data, so it is committed directly in the manifest route (env vars optionally override). The Mini App is verified on deploy without manual Vercel env setup. |
 
 ## Data Flow
 
@@ -50,6 +53,11 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 │  POST /api/submit → GitHub API → commit metadata.json → redeploy │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+On top of these three layers sits a **distribution layer**: the same Vercel
+deployment is also consumed *inside Farcaster clients* as a Mini App (manifest +
+`fc:miniapp` embeds + SDK). See the [Farcaster Mini App](#farcaster-mini-app)
+section below.
 
 ## How to Run
 
@@ -208,6 +216,65 @@ Only one active route:
 - Body: `{ arweaveId, title, description, type, filetype, tags, ens, source?, socialLink?, filename? }`
 - Flow: Validate → construct Item (bare Arweave URL) → fetch metadata.json from GitHub API → append → commit to `main` → Vercel redeploys
 
+## Farcaster Mini App
+
+The gallery is also a **Farcaster Mini App** — it launches inside Farcaster
+clients (Farcaster app, Base app, etc.) and every page is shareable as a rich
+embed card. Scope is intentionally minimal (launch + share + save); there is
+**no wallet, auth, notifications, or file upload**, so runtime OpEx stays
+**$0.00/month**.
+
+### How it works
+
+| Piece | Implementation |
+|-------|----------------|
+| **Manifest** | `GET /.well-known/farcaster.json` via `src/app/.well-known/farcaster.json/route.ts` (`force-static`). Returns `accountAssociation` + `miniapp` config; every URL built from `getSiteUrl()`. |
+| **Account association** | Signed domain-ownership proof for `cc0-lib.xyz` (Farcaster **FID 369904**, custody key `0xa02C…d4E2`, payload `{"domain":"cc0-lib.xyz"}`). Public, non-secret data **committed in the route**; `FARCASTER_HEADER/PAYLOAD/SIGNATURE` env vars override it. The app is therefore a **verified** Mini App on deploy. |
+| **SDK bootstrap** | `MiniAppProvider` (`src/components/miniapp/miniapp-provider.tsx`) lazy-imports `@farcaster/miniapp-sdk`, calls `sdk.actions.ready()` (dismisses the splash — the #1 gotcha), and writes `client.safeAreaInsets` to CSS vars (`--fc-safe-*`, consumed by `body` padding in `globals.css`). Mounted in `layout.tsx`. |
+| **Save prompt** | `SaveAppButton` (`src/components/miniapp/save-app-button.tsx`) renders a header "save app" item **only inside a Farcaster client and when not already added**; calls `sdk.actions.addMiniApp()`. |
+| **Embeds (sharing)** | `buildEmbed()` (`src/lib/miniapp-embed.ts`) returns `{ "fc:miniapp", "fc:frame" }` for the Next `metadata.other` field. Added on the homepage (`page.tsx`, button "Browse CC0 assets") and **every `/[slug]` asset page** (`[slug]/page.tsx`, button "View asset"). |
+| **Per-asset viral loop** | Each asset's embed image is its Arweave `ThumbnailURL` (fallback `miniapp-embed.png`), so any asset shared in a feed renders its own launch card. |
+
+### Manifest config (`miniapp`)
+
+`version 1`, `name "CC0-LIB"`, `homeUrl`/`iconUrl`/`splashImageUrl`/
+`heroImageUrl`/`ogImageUrl` from `getSiteUrl()`, `splashBackgroundColor
+"#18181b"`, `primaryCategory "art-creativity"`, `tags ["cc0","assets","nouns",
+"library","design"]`, plus `subtitle`/`description`/`tagline`/`ogTitle`/
+`ogDescription`, `noindex false`.
+
+### Image assets
+
+Generated by `scripts/generate-miniapp-assets.ts` (sharp) from the brand SVGs
+(`cc0lib-c.svg` mark + `cc0lib-h.svg` wordmark on `#18181b`), committed to
+`/public`. Run via `npm run generate-miniapp-assets`:
+
+| File | Size | Use |
+|------|------|-----|
+| `miniapp-icon.png` | 1024×1024, **no alpha** | manifest `iconUrl` |
+| `miniapp-splash.png` | 200×200 | splash / launch loading screen |
+| `miniapp-embed.png` | 1200×800 (3:2) | homepage embed + per-asset fallback |
+| `miniapp-hero.png` | 1200×630 | `heroImageUrl` / `ogImageUrl` |
+
+### Domain consistency (action item)
+
+Farcaster treats `cc0-lib.xyz` and `www.cc0-lib.xyz` as **different apps**, so the
+hosting domain must match the signed association (`cc0-lib.xyz`, apex).
+**Currently Vercel serves `www` as primary and the apex `308`-redirects to it** —
+the reverse of intent. It still works (clients follow the redirect) but adds a
+redirect hop to `homeUrl` and to every `miniapp-*.png`, which can cause gray/
+missing embed images in feed scrapers that don't follow redirects. **Fix:** in
+Vercel → Settings → Domains, set the apex `cc0-lib.xyz` as **primary** and
+redirect `www → apex`.
+
+### Testing
+
+- Local embed/preview needs a public tunnel (e.g. `cloudflared tunnel --url
+  http://localhost:3000`); open the tunnel URL in a browser once before using it
+  in the Warpcast tools.
+- Validate the manifest + embeds with the Warpcast Mini App / Embed debugger;
+  enable **Developer Mode** in Farcaster settings first.
+
 ## Known Limitations
 
 1. **Notion metadata lost.** The `notion-api.splitbee.io` proxy is dead (HTTP 500). Rich titles, descriptions, source links, and custom tags from the original catalog are unrecoverable unless a backup exists.
@@ -216,7 +283,7 @@ Only one active route:
 4. **No comments/views.** KV-backed comments and page views removed.
 5. **Farcaster Mini App (launch + share + save).** The app runs as a Farcaster Mini App: dynamic manifest at `/.well-known/farcaster.json` (`src/app/.well-known/farcaster.json/route.ts`, env-driven via `getSiteUrl()`), `sdk.actions.ready()` + safe-area handling via `MiniAppProvider`, a "save app" prompt (`sdk.actions.addMiniApp()`), and `fc:miniapp`/`fc:frame` embeds on the homepage and every `/[slug]` asset page (per-asset embeds reuse the Arweave `ThumbnailURL`). **No file upload** — users upload to Arweave independently and submit the TX ID via the API. The signed `accountAssociation` for `cc0-lib.xyz` (Farcaster FID 369904, apex canonical) is committed in the manifest route, so the app is a verified Mini App; the `FARCASTER_HEADER/PAYLOAD/SIGNATURE` env vars optionally override it on a domain/account change.
 6. **Catalog size.** 2,816 Arweave transactions found; 881 same-title+type+filetype+ENS duplicates removed → 1,916 unique items (7 videos, ~21 Working Files, rest Images/GIFs/Audio/3D).
-7. **Canonical domain live.** `cc0-lib.xyz` is owned and live on Vercel (apex canonical; `www` 301-redirects to apex). Base URLs resolve via `getSiteUrl()`; set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production.
+7. **Canonical domain / redirect direction.** `cc0-lib.xyz` is owned and live on Vercel and is the intended canonical apex (and the domain the Mini App is signed for). **However, Vercel currently has `www` as the primary domain and the apex `308`-redirects to `www`** — the reverse of intent; set the apex as primary and redirect `www → apex` (see [Farcaster Mini App → Domain consistency](#farcaster-mini-app)). Base URLs resolve via `getSiteUrl()`; set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production.
 8. **Soft 404s.** Unmatched routes render the not-found page but return HTTP 200 (a side-effect of the `src/app/[...not-found]` catch-all workaround). Acceptable but suboptimal for SEO; may be revisitable on Next 16.
 9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
 10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
@@ -229,8 +296,9 @@ Only one active route:
 ## Last Verified
 
 - `tsc --noEmit`: 0 errors
-- `eslint src/**/*.{ts,tsx}`: 0 errors (1 pre-existing warning)
-- `next build`: Compiled successfully, 15/15 pages
+- `eslint src/**/*.{ts,tsx}`: 0 errors (pre-existing warnings only — `<img>` + exhaustive-deps)
+- `next build`: Compiled successfully, 16/16 pages (incl. static `/.well-known/farcaster.json`)
 - `next dev`: HTTP 200; Arweave assets loading via bare tx URLs + gateway fallback; video thumbnails + poster; Working Files file-type cards; unique slugs
+- **Farcaster Mini App:** manifest live and serving `accountAssociation` (FID 369904, domain `cc0-lib.xyz`); `fc:miniapp`/`fc:frame` embeds present on homepage + asset pages; tested functional inside Farcaster. Caveat: apex currently `308`-redirects to `www` (flip primary domain in Vercel).
 - Pushed to `BeanInTheMachine/cc0-lib` (`main`)
 - Catalog: 1,916 items (7 video, ~21 Working Files, rest Image/GIF/Audio/3D)
