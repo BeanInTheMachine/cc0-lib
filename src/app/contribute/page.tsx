@@ -121,9 +121,17 @@ const ContributePage = () => {
             . you must have MATIC in your wallet to utilise this dapp.
           </li>
         </ul>
-        <span className="font-rubik text-4xl sm:text-6xl">mail us</span>
+        <span className="font-rubik text-4xl sm:text-6xl">contact</span>
         <span className="w-full max-w-prose text-lg text-white sm:w-1/2">
-          mail us: submissions[at]cc0-lib.wtf
+          reach out on{" "}
+          <Link
+            href="https://farcaster.xyz/coolbeans1r.eth"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
+          >
+            farcaster
+          </Link>
         </span>
       </div>
     </Container>

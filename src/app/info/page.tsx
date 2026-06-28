@@ -67,6 +67,21 @@ const InfoPage = () => {
         </Card>
 
         <Card>
+          <Title>resurrected</Title>
+          <Description>
+            by{" "}
+            <Link
+              href="https://farcaster.xyz/coolbeans1r.eth"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
+            >
+              coolbeans1r.eth
+            </Link>
+          </Description>
+        </Card>
+
+        <Card>
           <Title>team</Title>
           <Description>
             the same team that brought you{" "}
@@ -77,8 +92,7 @@ const InfoPage = () => {
               className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
             >
               archives.wtf
-            </Link>{" "}
-            -{" "}
+            </Link>{" "}(dead) -{" "}
             <Link
               href="https://twitter.com/thevoadz"
               target="_blank"
@@ -165,21 +179,6 @@ const InfoPage = () => {
         </Card> */}
 
         <Card>
-          <Title>raycast</Title>
-          <Description>
-            get our companion{" "}
-            <Link
-              href="https://www.raycast.com/0xN1/cc0-lib"
-              rel="noreferrer noopener"
-              target="_blank"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              raycast extension
-            </Link>
-          </Description>
-        </Card>
-
-        <Card>
           <Title>privacy policy</Title>
           <Description>
             read our{" "}
@@ -198,7 +197,7 @@ const InfoPage = () => {
             submit your{" "}
             <Link
               target="_blank"
-              href="https://cc0-lib.canny.io/feature-request"
+              href="https://farcaster.xyz/coolbeans1r.eth"
               className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
             >
               ideas
@@ -222,31 +221,14 @@ const InfoPage = () => {
         <Card>
           <Title>donation</Title>
           <Description>
-            <Link
-              target="_blank"
-              href="ethereum:0xcC0D45aD21224186e8C0450086aF57f30eD88CC0"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              cc0-lib.eth
-            </Link>
+            send burrito money to coolbeans1r.eth
           </Description>
         </Card>
 
         <Card>
           <Title>support us!</Title>
-
           <Description>
-            every purchase of this{" "}
-            <Link
-              target="_blank"
-              rel="noreferrer noopener"
-              href="https://zora.co/editions/zora:0xa219da25a9c147e29f825a75fab7d0e4faf4c692"
-              title="cc0-lib NFT"
-              className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
-            >
-              NFT
-            </Link>{" "}
-            will go towards the development of cc0-lib.
+            don&apos;t support us!
           </Description>
         </Card>
       </div>
