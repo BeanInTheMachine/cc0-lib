@@ -17,6 +17,7 @@ import ModelViewer from "@/components/ui/model-viewer";
 import { Route } from "next";
 import GatewayImage from "@/components/ui/gateway-image";
 import { getSiteUrl } from "@/lib/site-url";
+import { buildEmbed } from "@/lib/miniapp-embed";
 
 type DetailsPageProps = {
   params: Promise<{ slug: string }>;
@@ -53,6 +54,11 @@ export const generateMetadata = async ({ params }: DetailsPageProps) => {
       description: data?.Description,
       images: [data?.ThumbnailURL || `${siteUrl}/og.png`],
     },
+    other: buildEmbed({
+      imageUrl: data?.ThumbnailURL || `${siteUrl}/miniapp-embed.png`,
+      buttonTitle: "View asset",
+      url: `${siteUrl}/${slug}`,
+    }),
   };
 };
 

@@ -17,6 +17,7 @@ import Cursor from "@/components/ui/cursor";
 import Ticker from "@/components/ui/ticker";
 import { useInView } from "framer-motion";
 import GatewayImage from "@/components/ui/gateway-image";
+import SaveAppButton from "@/components/miniapp/save-app-button";
 import { DEV_MODE } from "@/lib/constants";
 
 import {
@@ -316,6 +317,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
           />
         </Link>
         <ul className="flex items-center gap-4">
+          <SaveAppButton />
           <li>
             <Link
               href="/fav"

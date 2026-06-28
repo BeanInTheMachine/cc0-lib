@@ -149,5 +149,9 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    padding-top: var(--fc-safe-top, 0px);
+    padding-bottom: var(--fc-safe-bottom, 0px);
+    padding-left: var(--fc-safe-left, 0px);
+    padding-right: var(--fc-safe-right, 0px);
   }
 }

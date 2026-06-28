@@ -9,9 +9,9 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 - **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied.
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
 - **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
-- **Custom domain:** `cc0-lib.wtf` is the intended domain but is **not yet acquired**. The codebase resolves its base URL dynamically (see below).
+- **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel). The apex `cc0-lib.xyz` is canonical; `www.cc0-lib.xyz` 301-redirects to it. The codebase resolves its base URL dynamically (see below).
 - **Resurrected by:** coolbeans1r.eth
-- **Version:** `2.0.0`.
+- **Version:** `2.1.0`.
 
 ## Architectural Decisions
 
@@ -21,7 +21,7 @@ The abandoned **cc0-lib** project (a Nouns DAO CC0 asset library) was refactored
 | **Arweave for file storage only** | All assets permanently stored on Arweave. Multi-gateway fallback (`arweave.net`, `ar-io.net`, `permaweb.io`) for delivery resilience. |
 | **Bare Arweave tx URLs** | Assets are single data transactions served at `https://arweave.net/{txId}` — **not** path manifests. Appending the filename (`/{txId}/{filename}`) returns 404, so all `ThumbnailURL`/`File` values are the bare tx URL. |
 | **`<img>` + gateway rotation** | Arweave assets render via `GatewayImage` (plain `<img>` with `onError` gateway rotation), bypassing the Next.js image optimizer (which broke on Arweave). `next/image` is still used only for the cloudnouns cursor PFP and the video-player overlay logo. |
-| **Configurable site URL** | `getSiteUrl()` resolves the base URL in order: `NEXT_PUBLIC_SITE_URL` → Vercel's `VERCEL_PROJECT_PRODUCTION_URL` → fallback `https://cc0-lib.wtf`. Drives every canonical/OG/Twitter/sitemap/robots/share URL — correct on `vercel.app` automatically, auto-switches to `cc0-lib.wtf` once it becomes the production domain. |
+| **Configurable site URL** | `getSiteUrl()` resolves the base URL in order: `NEXT_PUBLIC_SITE_URL` → Vercel's `VERCEL_PROJECT_PRODUCTION_URL` → fallback `https://cc0-lib.xyz`. Drives every canonical/OG/Twitter/sitemap/robots/share URL. Set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production so all URLs (and the future Farcaster manifest) agree on the canonical apex. |
 | **Vercel Free Tier hosting** | Hybrid static + single serverless function for submissions. Not a pure static export. Auto-deploys on every push to `main`. |
 | **GitHub API submit endpoint** | Serverless `POST /api/submit` uses `GITHUB_TOKEN` to fetch → append → commit `metadata.json`, triggering a Vercel redeploy. |
 | **No auth for browsing** | Public read-only gallery. Submit endpoint protected by `SUBMIT_SECRET` Bearer token. |
@@ -73,6 +73,9 @@ npx tsx scripts/generate-video-thumbnails.ts
 
 # Deduplicate metadata (one-time)
 npx tsx scripts/dedup-metadata.ts
+
+# Generate Farcaster Mini App images (one-time)
+npm run generate-miniapp-assets
 ```
 
 ## Environment Variables (`.env`)
@@ -80,7 +83,7 @@ npx tsx scripts/dedup-metadata.ts
 ```env
 # Optional — public base URL for canonical/OG/sitemap/share links.
 # On Vercel this auto-resolves from VERCEL_PROJECT_PRODUCTION_URL,
-# falling back to https://cc0-lib.wtf. Set to override (e.g. custom domain).
+# falling back to https://cc0-lib.xyz. Set to override (e.g. custom domain).
 NEXT_PUBLIC_SITE_URL=
 
 # Required for POST /api/submit
@@ -88,9 +91,16 @@ SUBMIT_SECRET=             # Shared secret Bearer token
 GITHUB_TOKEN=              # GitHub PAT with repo contents read/write
 GITHUB_OWNER=              # GitHub username or org (e.g. BeanInTheMachine)
 GITHUB_REPO=               # Repository name (e.g. cc0-lib)
+
+# Optional — Farcaster Mini App account association (verified publishing).
+# Generate at https://farcaster.xyz/~/developers/new for domain cc0-lib.xyz.
+FARCASTER_HEADER=
+FARCASTER_PAYLOAD=
+FARCASTER_SIGNATURE=
 ```
 
-The app works without any env vars for read-only browsing.
+The app works without any env vars for read-only browsing (and still launches
+and embeds as a Mini App; only verified publishing needs the `FARCASTER_*` set).
 
 ## File Inventory
 
@@ -113,6 +123,12 @@ The app works without any env vars for read-only browsing.
 | `public/cc0lib.svg` / `cc0lib-h.svg` | Real brand logos (restored from git history) |
 | `public/thumbnails/` | 7 generated video thumbnail JPGs (committed to repo) |
 | `.env.example` | Documented env vars |
+| `scripts/generate-miniapp-assets.ts` | One-time script (sharp): generates Farcaster Mini App images from brand SVGs — `miniapp-icon.png` (1024², no alpha), `miniapp-splash.png` (200²), `miniapp-embed.png` (1200×800, 3:2), `miniapp-hero.png` (1200×630) |
+| `src/app/.well-known/farcaster.json/route.ts` | Dynamic Mini App manifest (`force-static`) — `miniapp` config + optional `accountAssociation` from env; all URLs via `getSiteUrl()` |
+| `src/lib/miniapp-embed.ts` | `buildEmbed()` — returns `{ "fc:miniapp", "fc:frame" }` embed meta for the Next `metadata.other` field |
+| `src/components/miniapp/miniapp-provider.tsx` | Client provider: lazy-loads SDK, calls `sdk.actions.ready()`, applies `safeAreaInsets` as CSS vars, exposes `useMiniApp()` context (`inMiniApp`, `added`) |
+| `src/components/miniapp/save-app-button.tsx` | Header "save app" button — shown only inside a Farcaster client (and when not already added); calls `sdk.actions.addMiniApp()` |
+| `public/miniapp-*.png` | Generated Mini App icon/splash/embed/hero images |
 
 ### Key Modified Files
 
@@ -198,9 +214,9 @@ Only one active route:
 2. **Arweave-only catalog.** Items derive titles from filenames and types from Content-Type tags. Descriptions are auto-generated.
 3. **No user authentication.** SIWE/wagmi removed. Favorites are localStorage-only (per-device, not synced).
 4. **No comments/views.** KV-backed comments and page views removed.
-5. **No Farcaster integration / no file upload.** Removed. Users upload to Arweave independently and submit the TX ID via the API.
+5. **Farcaster Mini App (launch + share + save).** The app runs as a Farcaster Mini App: dynamic manifest at `/.well-known/farcaster.json` (`src/app/.well-known/farcaster.json/route.ts`, env-driven via `getSiteUrl()`), `sdk.actions.ready()` + safe-area handling via `MiniAppProvider`, a "save app" prompt (`sdk.actions.addMiniApp()`), and `fc:miniapp`/`fc:frame` embeds on the homepage and every `/[slug]` asset page (per-asset embeds reuse the Arweave `ThumbnailURL`). **No file upload** — users upload to Arweave independently and submit the TX ID via the API. Verified publishing requires a signed `accountAssociation` (`FARCASTER_HEADER/PAYLOAD/SIGNATURE` env, generated for `cc0-lib.xyz`); without it the app still launches and embeds but is unverified.
 6. **Catalog size.** 2,816 Arweave transactions found; 881 same-title+type+filetype+ENS duplicates removed → 1,916 unique items (7 videos, ~21 Working Files, rest Images/GIFs/Audio/3D).
-7. **Custom domain pending.** `cc0-lib.wtf` is still ACTIVE under its prior owner. The site runs on `*.vercel.app` until acquired; base URLs auto-resolve via `getSiteUrl()`.
+7. **Canonical domain live.** `cc0-lib.xyz` is owned and live on Vercel (apex canonical; `www` 301-redirects to apex). Base URLs resolve via `getSiteUrl()`; set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production.
 8. **Soft 404s.** Unmatched routes render the not-found page but return HTTP 200 (a side-effect of the `src/app/[...not-found]` catch-all workaround). Acceptable but suboptimal for SEO; may be revisitable on Next 16.
 9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
 10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
@@ -208,7 +224,7 @@ Only one active route:
 ## Dependency Summary
 
 **Before:** 52 dependencies (Bundlr, Notion, wagmi, SIWE, Vercel KV, Redis, Pinecone, LangChain, ethers, etc.)
-**After:** 25 total — 21 runtime (Next.js, React, Tailwind, Radix context-menu/toast, framer-motion, lucide-react, next-share, react-iframe, react-fast-marquee, rive, zod) + 4 dev (`@types/node`, `@types/react`, `tsx`, `typescript`). Standardized on **npm** (`package-lock.json`; `bun.lockb` removed).
+**After:** 27 total — 22 runtime (Next.js, React, Tailwind, Radix context-menu/toast, framer-motion, lucide-react, next-share, react-iframe, react-fast-marquee, rive, zod, `@farcaster/miniapp-sdk`) + 5 dev (`@types/node`, `@types/react`, `tsx`, `typescript`, `sharp` — `sharp` is used only by the one-time Mini App asset script). Standardized on **npm** (`package-lock.json`; `bun.lockb` removed).
 
 ## Last Verified
 

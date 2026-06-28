@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { getSiteUrl } from "@/lib/site-url";
+import MiniAppProvider from "@/components/miniapp/miniapp-provider";
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
@@ -10,7 +11,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <MainContainer>{children}</MainContainer>
+        <MiniAppProvider>
+          <MainContainer>{children}</MainContainer>
+        </MiniAppProvider>
       </body>
     </html>
   );

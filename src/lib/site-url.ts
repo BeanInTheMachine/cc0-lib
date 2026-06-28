@@ -5,5 +5,5 @@ export function getSiteUrl(): string {
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   if (vercel) return `https://${vercel}`;
 
-  return "https://cc0-lib.wtf";
+  return "https://cc0-lib.xyz";
 }

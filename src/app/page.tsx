@@ -1,5 +1,6 @@
 import { readMetadata } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
+import { buildEmbed } from "@/lib/miniapp-embed";
 import FrontPage from "./front-page";
 
 export const generateMetadata = () => {
@@ -29,6 +30,11 @@ export const generateMetadata = () => {
       description,
       images: [image],
     },
+    other: buildEmbed({
+      imageUrl: `${siteUrl}/miniapp-embed.png`,
+      buttonTitle: "Browse CC0 assets",
+      url: siteUrl,
+    }),
   };
 };
 
