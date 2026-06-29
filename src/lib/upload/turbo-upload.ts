@@ -35,10 +35,7 @@ export async function uploadFree(
   const turbo = TurboFactory.unauthenticated({
     token: "base-usdc",
     uploadServiceConfig: {
-      url:
-        process.env.NODE_ENV === "development"
-          ? "https://upload.ardrive.dev"
-          : "https://upload.ardrive.io",
+      url: "https://upload.ardrive.dev",
     },
   });
   return turbo.uploadRawX402Data({
