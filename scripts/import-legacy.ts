@@ -202,13 +202,13 @@ async function tryFetchGraphQL(
   }
 }
 
-async function fetchArweaveTransactions(): Promise<ArweaveTransactionNode[]> {
+async function fetchArweaveTransactions(
+  tagFilters: { name: string; values: string[] }[]
+): Promise<ArweaveTransactionNode[]> {
   const query = `
     query($cursor: String) {
       transactions(
-        tags: [
-          { name: "App", values: ["cc0-lib uploader", "cc0-lib desktop uploader"] }
-        ]
+        tags: ${JSON.stringify(tagFilters)}
         after: $cursor
         first: 100
       ) {
@@ -274,6 +274,37 @@ async function fetchArweaveTransactions(): Promise<ArweaveTransactionNode[]> {
 function arweaveNodeToMetadataItem(
   node: ArweaveTransactionNode
 ): MetadataItem {
+  const appName = getTag(node, "App-Name");
+  const isNewFormat = appName === "cc0-lib";
+
+  if (isNewFormat) {
+    const contentType = getTag(node, "Content-Type") || "application/octet-stream";
+    const tagsStr = getTag(node, "Tags") || "";
+    const tagList = tagsStr
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t !== "");
+    tagList.push("cc0-lib-upload");
+
+    return {
+      id: node.id,
+      Title: getTag(node, "Title") || "untitled",
+      Description: getTag(node, "Description") || "",
+      Type: getTag(node, "Type") || "Working Files",
+      Filetype: getTag(node, "Filetype") || "UNKNOWN",
+      Thumbnails: [],
+      ThumbnailURL: `https://arweave.net/${node.id}`,
+      Source: "",
+      Status: "published",
+      Tags: tagList,
+      ENS: getTag(node, "ENS") || "",
+      ID: 0,
+      "Social Link": "",
+      File: `https://arweave.net/${node.id}`,
+      ParentDB: "",
+    };
+  }
+
   const filename = getTag(node, "Filename") || "untitled";
   const contentType = getTag(node, "Content-Type") || "application/octet-stream";
   const uploader = getTag(node, "Uploader") || "";
@@ -329,8 +360,23 @@ async function main() {
   console.log(`${notionOk ? "Part B" : "Part A"}: Arweave Extraction ---`);
   let arweaveNodes: ArweaveTransactionNode[] = [];
   try {
-    arweaveNodes = await fetchArweaveTransactions();
-    console.log(`Total Arweave transactions: ${arweaveNodes.length}`);
+    const oldNodes = await fetchArweaveTransactions([
+      { name: "App", values: ["cc0-lib uploader", "cc0-lib desktop uploader"] },
+    ]);
+    console.log(`Legacy (App tag) transactions: ${oldNodes.length}`);
+
+    const newNodes = await fetchArweaveTransactions([
+      { name: "App-Name", values: ["cc0-lib"] },
+    ]);
+    console.log(`New (App-Name tag) transactions: ${newNodes.length}`);
+
+    const seen = new Set<string>();
+    arweaveNodes = [...oldNodes, ...newNodes].filter((node) => {
+      if (seen.has(node.id)) return false;
+      seen.add(node.id);
+      return true;
+    });
+    console.log(`Total Arweave transactions (deduplicated): ${arweaveNodes.length}`);
   } catch (err) {
     console.error("Failed to fetch Arweave data:", err);
   }

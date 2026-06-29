@@ -1,3 +1,10 @@
+interface Window {
+  ethereum?: import("ethers").Eip1193Provider & {
+    on?: (event: string, cb: (...args: unknown[]) => void) => void;
+    removeListener?: (event: string, cb: (...args: unknown[]) => void) => void;
+  };
+}
+
 type Item = {
   id: string;
   Source: string;

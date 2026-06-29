@@ -8,6 +8,7 @@ export const staticPages: string[] = [
   "sitemap",
   "random",
   "fav",
+  "upload",
 ];
 
 export const DEV_MODE: boolean = process.env.NODE_ENV === "development";

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSiteUrl } from "@/lib/site-url";
+import { getItemSlug } from "@/lib/metadata";
 
 const submitSchema = z.object({
   arweaveId: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Invalid Arweave transaction ID"),
@@ -9,7 +9,7 @@ const submitSchema = z.object({
   type: z.enum(["Image", "Video", "Audio", "3D", "Working Files"]),
   filetype: z.string().min(1).max(20),
   tags: z.array(z.string().min(1).max(30)).max(20),
-  ens: z.string().endsWith(".eth"),
+  ens: z.string().optional(),
   source: z.string().url().optional(),
   socialLink: z.string().url().optional(),
   filename: z.string().optional(),
@@ -22,6 +22,22 @@ function generateId(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW = 10 * 60 * 1000;
+const RATE_LIMIT_MAX = 5;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
 }
 
 async function fetchMetadataFile(
@@ -86,26 +102,23 @@ async function commitMetadataFile(
 }
 
 export async function POST(request: NextRequest) {
-  const submitSecret = process.env.SUBMIT_SECRET;
   const githubToken = process.env.GITHUB_TOKEN;
   const githubOwner = process.env.GITHUB_OWNER;
   const githubRepo = process.env.GITHUB_REPO;
 
-  if (!submitSecret || !githubToken || !githubOwner || !githubRepo) {
+  if (!githubToken || !githubOwner || !githubRepo) {
     return NextResponse.json(
       { error: "Server configuration error" },
       { status: 500 }
     );
   }
 
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Missing authorization" }, { status: 401 });
-  }
-
-  const token = authHeader.slice(7);
-  if (token !== submitSecret) {
-    return NextResponse.json({ error: "Invalid authorization" }, { status: 401 });
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { error: "Too many submissions. Please try again later." },
+      { status: 429 }
+    );
   }
 
   let body: unknown;
@@ -158,7 +171,7 @@ export async function POST(request: NextRequest) {
     Source: source ?? "",
     Status: "published",
     Tags: tags,
-    ENS: ens,
+    ENS: ens ?? "",
     ID: 0,
     "Social Link": socialLink ?? "",
     File: arweaveUrl,
@@ -188,26 +201,24 @@ export async function POST(request: NextRequest) {
 
       const newContent = JSON.stringify(metadataItems, null, 2);
 
+      const ensLabel = ens ? ` by ${ens}` : "";
       await commitMetadataFile(
         githubOwner,
         githubRepo,
         githubToken,
         sha,
         newContent,
-        `submit: ${title} by ${ens}`
+        `submit: ${title}${ensLabel}`
       );
 
-      const itemSlug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)+/g, "");
+      const slug = getItemSlug(newItem);
 
       return NextResponse.json(
         {
           id: newItem.id,
           title: newItem.Title,
-          slug: itemSlug,
-          url: `${getSiteUrl()}/${itemSlug}`,
+          slug,
+          url: `https://cc0-lib.xyz/${slug}`,
         },
         { status: 200 }
       );
