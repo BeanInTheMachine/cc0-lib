@@ -32,7 +32,7 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 | **Farcaster Mini App** | The gallery doubles as a Farcaster Mini App: dynamic manifest, `sdk.actions.ready()` + safe-area handling, a "save app" prompt, and `fc:miniapp`/`fc:frame` embeds. No wallet/auth/notifications — stays $0 runtime OpEx. |
 | **Per-asset embeds** | Every `/[slug]` asset page is its own shareable Mini App card (embed image = the asset's Arweave `ThumbnailURL`, fallback `miniapp-embed.png`). Drives a viral loop: any asset shared in a feed renders a launch card. |
 | **Committed account association** | The signed domain-ownership proof (`accountAssociation`) is public, non-secret data, so it is committed directly in the manifest route (env vars optionally override). The Mini App is verified on deploy without manual Vercel env setup. |
-| **Turbo SDK for uploads** | ar.io Turbo SDK (`@ardrive/turbo-sdk`) handles Arweave uploads. Free tier (≤100KB) uses unauthenticated `uploadRawX402Data`; paid tier (>100KB) uses authenticated client with on-demand USDC funding via any EIP-1193 wallet (MetaMask injected or WalletConnect). Rich Arweave tags (`App-Name: cc0-lib`, Title, Type, Filetype, Tags, ENS, Description) are embedded in every upload for full catalog rebuildability from Arweave GraphQL. |
+| **Turbo SDK for uploads** | ar.io Turbo SDK (`@ardrive/turbo-sdk`) handles Arweave uploads. **All** uploads use the authenticated client (`uploadFile`) signed by the connected EIP-1193 wallet against prod `upload.ardrive.io`: free tier (≤100KB) signs a data item with no `fundingMode` (Turbo waives the fee — no cost, no gas) and paid tier (>100KB) attaches on-demand USDC funding. Rich Arweave tags (`App-Name: cc0-lib`, Title, Type, Filetype, Tags, ENS, Description) are embedded in every upload for full catalog rebuildability from Arweave GraphQL. |
 | **Webpack bundler** | Next.js 16 defaults to Turbopack, but the Turbo SDK requires Node.js polyfills in the browser (`crypto`, `stream`, `buffer`, `process`) and intercepts `node:` scheme imports. Build scripts use `--webpack` flag to use the classic webpack bundler with a custom `NormalModuleFactory` plugin that remaps `node:stream` → `stream-browserify`, `node:crypto` → `crypto-browserify`, etc. No end-user performance impact — output JS/CSS is identical to Turbopack's. |
 
 ## Data Flow
@@ -133,18 +133,18 @@ them automatically added to the site catalog.
 
 | Tier | Max Size | Wallet Required | Cost |
 |------|----------|-----------------|------|
-| Free | ≤100KB | None | $0 |
+| Free | ≤100KB | EIP-1193 (signature only) | $0 (no gas) |
 | Paid | Unlimited | EIP-1193 (MetaMask, WalletConnect) | USDC on Base (on-demand funding) |
 
 ### Upload Flow
 
 ```
 1. User drops file + fills metadata form
-2. Size check → free or paid path
-3. Free: TurboFactory.unauthenticated().uploadRawX402Data() → Arweave tx ID
-4. Paid: Connect wallet → TurboFactory.authenticated({ walletAdapter, token: 'base-usdc',
-     fundingMode: OnDemandFunding }).uploadFile() → user approves in wallet → Arweave tx ID
-5. POST /api/submit → GitHub API appends metadata.json → Vercel redeploys
+2. Connect wallet (required for all file uploads) → wrap EIP-1193 provider in an EthereumWalletAdapter
+3. Free (≤100KB): TurboFactory.authenticated({ walletAdapter, token: 'base-usdc' }).uploadFile()
+     → user signs the data item (no cost, no gas) → Arweave mainnet tx ID
+4. Paid (>100KB): same + fundingMode: OnDemandFunding → user approves USDC on Base → Arweave mainnet tx ID
+5. POST /api/submit → Git Data API commit to metadata.json → Vercel redeploys
 6. Success page: primary "View on Arweave" link (instant) + secondary "View on site" link with a "may take ~60s to go live" note
 ```
 
@@ -169,13 +169,13 @@ reconstructed from Arweave GraphQL if `metadata.json` is ever lost:
 - **Injected** (MetaMask, Coinbase Wallet, Brave, Rainbow): detected via `window.ethereum`, requires no configuration
 - **WalletConnect** (300+ wallets, QR code modal): requires `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` env var
 
-Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an `EthereumWalletAdapter` (`{ getSigner: () => cachedSigner }`) to the Turbo SDK.
+Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an `EthereumWalletAdapter` (`{ getSigner: () => cachedSigner }`) to the Turbo SDK. A wallet is required for **every** file upload (free uploads only sign a data item — no cost, no gas); the "Paste Arweave ID" mode needs no wallet.
 
 ### Turbo SDK Details
 
-- **Upload service:** `upload.ardrive.dev` (free tier), `upload.ardrive.io` (authenticated)
-- **On-demand funding:** Turbo SDK's `OnDemandFunding` class tops up USDC credits from the connected wallet in a single transaction during upload, with a 10% buffer
-- **File handling:** Paid uploads use stream factory (`fileStreamFactory` + `fileSizeFactory`) to support `fundingMode`. Free uploads pass the File/blob directly to `uploadRawX402Data`
+- **Upload service:** `upload.ardrive.io` (production, authenticated) for all uploads — both free and paid
+- **On-demand funding:** Turbo SDK's `OnDemandFunding` class tops up USDC credits from the connected wallet in a single transaction during upload, with a 10% buffer (paid >100KB only)
+- **File handling:** All uploads are wallet-signed data items via `uploadFile` (stream factory `fileStreamFactory` + `fileSizeFactory`). Free (≤100KB) omits `fundingMode` and relies on Turbo's free-tier waiver; paid (>100KB) attaches `OnDemandFunding`
 
 ### Submit API Changes (v2.2.0)
 
@@ -199,7 +199,7 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `src/lib/gateway-url.ts` | `ARWEAVE_GATEWAYS` list + `extractArweaveId()` |
 | `src/lib/site-url.ts` | `getSiteUrl()` — env-driven base URL resolver |
 | `src/lib/constants.ts` | Static page list (incl. `"upload"`), `DEV_MODE` |
-| `src/lib/upload/turbo-upload.ts` | Turbo SDK wrapper: `uploadFree()` (unauthenticated, ≤100KB), `uploadPaid()` (authenticated + OnDemandFunding), `estimateCost()`, `isFreeUpload()`. Embeds CC0-lib Arweave tags on all uploads. |
+| `src/lib/upload/turbo-upload.ts` | Turbo SDK wrapper: `uploadFree()` (authenticated, ≤100KB, no `fundingMode` — relies on Turbo's free-tier waiver), `uploadPaid()` (authenticated + OnDemandFunding), `estimateCost()`, `isFreeUpload()`. Both upload via prod `upload.ardrive.io` and embed CC0-lib Arweave tags. |
 | `src/app/api/submit/route.ts` | Public serverless submit endpoint — in-memory rate limiting (5/10min/IP), Zod validation (ENS optional), and a GitHub **Git Data API** commit flow (blob → tree → commit → update ref) with retry. Reads `metadata.json` via the Blob API so files >1 MB work (the Contents API omits content past 1 MB). Requires `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_REPO` in all environments. |
 | `src/app/upload/page.tsx` | Server RSC — page metadata (title, OG, Twitter cards) via `getSiteUrl()` |
 | `src/app/upload/upload-page.tsx` | Client component (~400 lines) — drag-and-drop file zone with preview and size-based tier indicator, metadata form (title, description, type dropdown, filetype, tags, optional ENS), wallet connection (injected MetaMask + WalletConnect QR modal), cost estimate display, upload progress bar via Turbo SDK events, success page with Arweave + site URLs, error handling, "Paste Arweave ID" fallback tab |
@@ -369,7 +369,7 @@ redirect `www → apex`.
 8. **Soft 404s.** Unmatched routes render the not-found page but return HTTP 200 (a side-effect of the `src/app/[...not-found]` catch-all workaround). Acceptable but suboptimal for SEO; may be revisitable on Next 16.
 9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
 10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
-11. **Free upload endpoint.** The production Turbo upload service (`upload.ardrive.io`) returns 404 (`Not Found`) on the unsigned x402 data endpoint (`POST /x402/data-item/unsigned`), whereas `upload.ardrive.dev` returns 200 with a valid receipt. Free uploads therefore use `upload.ardrive.dev` in **all** environments (previously dev-only via a `NODE_ENV` check, which left production 404ing). The data still ends up on Arweave mainnet (the bundler aggregates and posts regardless of service domain), but this should be monitored and switched back to the production endpoint once its unsigned x402 route is restored.
+11. **Free uploads are wallet-signed (mainnet).** Attempts to offer free uploads *without* a wallet failed: prod `upload.ardrive.io` 404s the unsigned x402 endpoint (`POST /x402/data-item/unsigned`), and the staging `upload.ardrive.dev` accepts unsigned x402 data but does **not** persist it to Arweave mainnet — verified for a real upload (`arweave.net/graphql` returned `transaction: null` and every production gateway 404'd the data item; only `*.dev` gateways recognized it). So free uploads now use the **authenticated** client (`uploadFile` signed by the connected EIP-1193 wallet, no `fundingMode`) against prod `upload.ardrive.io`: the user signs a data item (no cost, no gas), Turbo waives the ≤100KB fee, and it posts to mainnet. Every file upload therefore requires a wallet (the "Paste Arweave ID" mode does not).
 12. **Vercel redeploy lag.** After a successful upload + GitHub commit, it takes ~60 seconds for Vercel to redeploy and the new asset to appear on the site. The success page surfaces the instant Arweave URL as the primary "View on Arweave" link and the site URL as a secondary "View on site" link with a "may take ~60s to go live" note.
 13. **Webpack-only build.** Next.js 16 defaults to Turbopack, but the `node:` scheme polyfills required by the Turbo SDK only work with webpack. `dev` and `build` scripts use `--webpack`. No runtime performance difference — output JS/CSS is identical.
 
@@ -384,7 +384,7 @@ redirect `www → apex`.
 - `eslint src/**/*.{ts,tsx}`: 0 errors (pre-existing warnings only — `<img>` + exhaustive-deps)
 - `next build --webpack`: Compiled successfully, 17/17 pages (incl. `/upload` and static `/.well-known/farcaster.json`)
 - `next dev`: HTTP 200 on `/upload`; Arweave assets loading via bare tx URLs + gateway fallback; video thumbnails + poster; Working Files file-type cards; unique slugs
-- **Upload free (≤100KB):** Turbo SDK → Arweave via `upload.ardrive.dev` → POST `/api/submit` → metadata commit
+- **Upload free (≤100KB):** wallet-signed `uploadFile` via prod `upload.ardrive.io` → Arweave mainnet → POST `/api/submit` (Git Data API) → metadata commit (pending end-to-end re-verification after redeploy)
 - **Farcaster Mini App:** manifest live and serving `accountAssociation` (FID 369904, domain `cc0-lib.xyz`); `fc:miniapp`/`fc:frame` embeds present on homepage + asset pages; tested functional inside Farcaster. Caveat: apex currently `308`-redirects to `www` (flip primary domain in Vercel).
 - Pushed to `BeanInTheMachine/cc0-lib` (`main`)
 - Catalog: 1,916 items (7 video, ~21 Working Files, rest Image/GIF/Audio/3D)

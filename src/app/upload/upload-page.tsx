@@ -189,15 +189,17 @@ export default function UploadPage() {
 
         let uploadResult: TurboUploadDataItemResponse;
 
+        const hasInjected = typeof window !== "undefined" && !!window.ethereum;
+        const signer = hasInjected
+          ? await connectInjected()
+          : await connectWalletConnect();
+
+        const cachedSigner = signer;
+        const walletAdapter = { getSigner: () => cachedSigner };
+
         if (isFreeUpload(file)) {
-          uploadResult = await uploadFree(file, metadata);
+          uploadResult = await uploadFree(file, metadata, walletAdapter as any);
         } else {
-          const hasInjected = typeof window !== "undefined" && !!window.ethereum;
-          const signer = hasInjected ? await connectInjected() : await connectWalletConnect();
-
-          const cachedSigner = signer;
-          const walletAdapter = { getSigner: () => cachedSigner };
-
           uploadResult = await uploadPaid(file, metadata, walletAdapter as any);
         }
 
@@ -444,18 +446,25 @@ export default function UploadPage() {
               )}
             </div>
 
-            {/* Size info + cost estimate */}
-            {file && !isFreeUpload(file) && (
+            {/* Wallet + cost info */}
+            {file && (
               <div className="rounded-xl bg-zinc-800/50 p-4">
-                <p className="text-sm text-zinc-400">
-                  Files over {formatSize(FREE_UPLOAD_LIMIT)} require payment.
-                  {costEstimate && (
-                    <span className="ml-1 text-white">
-                      Estimated: {costEstimate.usdc} (USDC on Base)
-                      <span className="text-zinc-500 ml-1">~${costEstimate.usd} USD</span>
-                    </span>
-                  )}
-                </p>
+                {isFreeUpload(file) ? (
+                  <p className="text-sm text-zinc-400">
+                    Free upload — you&apos;ll sign a message with your wallet to
+                    store it on Arweave (no cost, no gas).
+                  </p>
+                ) : (
+                  <p className="text-sm text-zinc-400">
+                    Files over {formatSize(FREE_UPLOAD_LIMIT)} require payment.
+                    {costEstimate && (
+                      <span className="ml-1 text-white">
+                        Estimated: {costEstimate.usdc} (USDC on Base)
+                        <span className="text-zinc-500 ml-1">~${costEstimate.usd} USD</span>
+                      </span>
+                    )}
+                  </p>
+                )}
                 {!walletAddress && (
                   <div className="mt-3 flex gap-2">
                     {typeof window !== "undefined" && window.ethereum && (
@@ -553,16 +562,16 @@ export default function UploadPage() {
         {/* Submit button */}
         {(file || (mode === "paste" && arweaveId)) && (
           <div className="flex flex-col gap-3">
-            {needsPayment && !walletAddress && (
+            {file && !walletAddress && (
               <span className="text-sm text-amber-400">
-                Connect wallet to pay for this upload
+                Connect wallet to upload
               </span>
             )}
             <button
               onClick={handleSubmit}
               disabled={
                 step === "uploading" ||
-                (needsPayment && !walletAddress) ||
+                (!!file && !walletAddress) ||
                 !title ||
                 !description ||
                 !filetype
@@ -572,9 +581,11 @@ export default function UploadPage() {
               <UploadCloud className="h-5 w-5" />
               {step === "uploading"
                 ? `Uploading... ${progress}%`
-                : needsPayment
-                  ? "Pay & upload"
-                  : "Upload (free)"}
+                : mode === "paste"
+                  ? "Submit"
+                  : needsPayment
+                    ? "Pay & upload"
+                    : "Sign & upload"}
             </button>
 
             {step === "uploading" && (

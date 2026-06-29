@@ -30,17 +30,20 @@ function buildTags(file: File, metadata: UploadMetadata) {
 
 export async function uploadFree(
   file: File,
-  metadata: UploadMetadata
+  metadata: UploadMetadata,
+  walletAdapter: EthereumWalletAdapter
 ): Promise<TurboUploadDataItemResponse> {
-  const turbo = TurboFactory.unauthenticated({
+  const turbo = TurboFactory.authenticated({
+    walletAdapter,
     token: "base-usdc",
-    uploadServiceConfig: {
-      url: "https://upload.ardrive.dev",
-    },
   });
-  return turbo.uploadRawX402Data({
-    data: file,
-    tags: buildTags(file, metadata),
+
+  return turbo.uploadFile({
+    fileStreamFactory: () => file.stream(),
+    fileSizeFactory: () => file.size,
+    dataItemOpts: {
+      tags: buildTags(file, metadata),
+    },
   });
 }
 
