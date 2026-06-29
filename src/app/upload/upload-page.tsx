@@ -234,7 +234,15 @@ export default function UploadPage() {
         throw new Error(data.error || `Submit failed (${res.status})`);
       }
 
-      const data = await res.json();
+      const rawBody = await res.text();
+      let data;
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        throw new Error(
+          `Submit returned an unreadable response (status ${res.status})`
+        );
+      }
       const arweaveUrl = `https://arweave.net/${txId}`;
       setResult({ ...data, arweaveUrl });
       setStep("success");

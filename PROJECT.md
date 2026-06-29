@@ -200,7 +200,7 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `src/lib/site-url.ts` | `getSiteUrl()` — env-driven base URL resolver |
 | `src/lib/constants.ts` | Static page list (incl. `"upload"`), `DEV_MODE` |
 | `src/lib/upload/turbo-upload.ts` | Turbo SDK wrapper: `uploadFree()` (unauthenticated, ≤100KB), `uploadPaid()` (authenticated + OnDemandFunding), `estimateCost()`, `isFreeUpload()`. Embeds CC0-lib Arweave tags on all uploads. |
-| `src/app/api/submit/route.ts` | Public serverless submit endpoint — in-memory rate limiting (5/10min/IP), Zod validation (ENS optional), GitHub API commit flow with retry. Dev mode writes metadata.json directly to disk for instant local testing. |
+| `src/app/api/submit/route.ts` | Public serverless submit endpoint — in-memory rate limiting (5/10min/IP), Zod validation (ENS optional), and a GitHub **Git Data API** commit flow (blob → tree → commit → update ref) with retry. Reads `metadata.json` via the Blob API so files >1 MB work (the Contents API omits content past 1 MB). Requires `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_REPO` in all environments. |
 | `src/app/upload/page.tsx` | Server RSC — page metadata (title, OG, Twitter cards) via `getSiteUrl()` |
 | `src/app/upload/upload-page.tsx` | Client component (~400 lines) — drag-and-drop file zone with preview and size-based tier indicator, metadata form (title, description, type dropdown, filetype, tags, optional ENS), wallet connection (injected MetaMask + WalletConnect QR modal), cost estimate display, upload progress bar via Turbo SDK events, success page with Arweave + site URLs, error handling, "Paste Arweave ID" fallback tab |
 | `src/app/robots.ts` | Dynamic robots (sitemap URL follows `getSiteUrl()`) |
@@ -295,7 +295,7 @@ type Item = {
 
 - **Auth:** Public (no auth required). Rate limited to 5 requests per 10 minutes per IP.
 - **Body:** `{ arweaveId, title, description, type, filetype, tags, ens?, source?, socialLink?, filename? }`
-- **Flow:** Validate (Zod, ENS optional) → construct Item (bare Arweave URL) → fetch metadata.json from GitHub API → assign sequential ID → append → commit to `main` → Vercel redeploys
+- **Flow:** Validate (Zod, ENS optional) → construct Item (bare Arweave URL) → read `metadata.json` via the GitHub **Git Data API** (Blob API; supports files >1 MB, unlike the Contents API which omits content past 1 MB) → assign sequential ID → append → commit via Git Data API (blob → tree → commit → update ref) on `main` → Vercel redeploys
 - **Response:** `{ id, title, slug, url }`
 
 ## Farcaster Mini App

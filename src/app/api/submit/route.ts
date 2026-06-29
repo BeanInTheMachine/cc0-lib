@@ -41,65 +41,101 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-async function fetchMetadataFile(
-  owner: string,
-  repo: string,
-  token: string
-): Promise<{ content: string; sha: string }> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/src/data/metadata.json`;
-  const res = await fetch(url, {
+const GITHUB_API = "https://api.github.com";
+const METADATA_PATH = "src/data/metadata.json";
+const BRANCH = "main";
+
+async function gh(path: string, token: string, init?: RequestInit) {
+  const res = await fetch(`${GITHUB_API}${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
+      Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.headers ?? {}),
     },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(
-      `GitHub API error fetching metadata: ${res.status} ${body}`
-    );
-  }
-
-  const data = await res.json();
-  const content = Buffer.from(data.content, "base64").toString("utf-8");
-  return { content, sha: data.sha };
-}
-
-async function commitMetadataFile(
-  owner: string,
-  repo: string,
-  token: string,
-  sha: string,
-  newContent: string,
-  message: string
-): Promise<void> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/src/data/metadata.json`;
-  const body = {
-    message,
-    content: Buffer.from(newContent).toString("base64"),
-    sha,
-    branch: "main",
-  };
-
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-      "Content-Type": "application/json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errBody = await res.text();
     throw new Error(
-      `GitHub API error committing metadata: ${res.status} ${errBody}`
+      `GitHub API ${init?.method ?? "GET"} ${path} failed: ${res.status} ${errBody}`
     );
   }
+
+  return res.json();
+}
+
+// Reads metadata.json via the Git Data API (Blob API supports up to 100MB,
+// unlike the Contents API which omits content for files over 1MB).
+async function readMetadata(
+  owner: string,
+  repo: string,
+  token: string
+): Promise<{ items: Item[]; baseCommitSha: string; baseTreeSha: string }> {
+  const base = `/repos/${owner}/${repo}`;
+
+  const ref = await gh(`${base}/git/ref/heads/${BRANCH}`, token);
+  const baseCommitSha = ref.object.sha as string;
+
+  const commit = await gh(`${base}/git/commits/${baseCommitSha}`, token);
+  const baseTreeSha = commit.tree.sha as string;
+
+  const fileMeta = await gh(
+    `${base}/contents/${METADATA_PATH}?ref=${baseCommitSha}`,
+    token
+  );
+  const blob = await gh(`${base}/git/blobs/${fileMeta.sha}`, token);
+  const content = Buffer.from(blob.content, blob.encoding).toString("utf-8");
+
+  return {
+    items: JSON.parse(content) as Item[],
+    baseCommitSha,
+    baseTreeSha,
+  };
+}
+
+// Commits new content via the Git Data API: blob -> tree -> commit -> ref.
+async function commitMetadata(
+  owner: string,
+  repo: string,
+  token: string,
+  baseCommitSha: string,
+  baseTreeSha: string,
+  newContent: string,
+  message: string
+): Promise<void> {
+  const base = `/repos/${owner}/${repo}`;
+
+  const blob = await gh(`${base}/git/blobs`, token, {
+    method: "POST",
+    body: JSON.stringify({ content: newContent, encoding: "utf-8" }),
+  });
+
+  const tree = await gh(`${base}/git/trees`, token, {
+    method: "POST",
+    body: JSON.stringify({
+      base_tree: baseTreeSha,
+      tree: [
+        { path: METADATA_PATH, mode: "100644", type: "blob", sha: blob.sha },
+      ],
+    }),
+  });
+
+  const commit = await gh(`${base}/git/commits`, token, {
+    method: "POST",
+    body: JSON.stringify({
+      message,
+      tree: tree.sha,
+      parents: [baseCommitSha],
+    }),
+  });
+
+  await gh(`${base}/git/refs/heads/${BRANCH}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ sha: commit.sha, force: false }),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -184,30 +220,29 @@ export async function POST(request: NextRequest) {
 
   while (attempt <= maxRetries) {
     try {
-      const { content, sha } = await fetchMetadataFile(
+      const { items, baseCommitSha, baseTreeSha } = await readMetadata(
         githubOwner,
         githubRepo,
         githubToken
       );
 
-      const metadataItems = JSON.parse(content) as Item[];
-
-      const maxId = metadataItems.reduce(
+      const maxId = items.reduce(
         (max, item) => Math.max(max, item.ID ?? 0),
         0
       );
       newItem.ID = maxId + 1;
 
-      metadataItems.push(newItem);
+      items.push(newItem);
 
-      const newContent = JSON.stringify(metadataItems, null, 2);
+      const newContent = JSON.stringify(items, null, 2);
 
       const ensLabel = ens ? ` by ${ens}` : "";
-      await commitMetadataFile(
+      await commitMetadata(
         githubOwner,
         githubRepo,
         githubToken,
-        sha,
+        baseCommitSha,
+        baseTreeSha,
         newContent,
         `submit: ${title}${ensLabel}`
       );
