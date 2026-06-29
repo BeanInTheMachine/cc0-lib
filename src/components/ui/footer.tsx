@@ -11,7 +11,7 @@ const Footer = () => (
         </span>
       </div>
     </Link>
-    <Link href="/contribute">
+    <Link href="/upload">
       <div className="group flex flex-row items-center gap-2" id="contribute">
         <span className="duration-250 opacity-0 transition-all ease-linear group-hover:opacity-100">
           contribute

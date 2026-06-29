@@ -529,7 +529,7 @@ const FrontPage = ({ initialData }: FrontPageProps) => {
             </div>
           </div>
         </div>
-        <Link href="/contribute">
+        <Link href="/upload">
           <div className="group relative flex flex-row items-center gap-2">
             <span className="duration-250 absolute right-12 hidden opacity-0 transition-all ease-linear group-hover:opacity-100 sm:block">
               contribute
@@ -614,7 +614,7 @@ const FrontPageTicker = () => {
         <div className="mr-64 flex flex-row gap-1">
           submit your{" "}
           <Link
-            href="/contribute"
+            href="/upload"
             rel="noreferrer noopener"
             className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
           >

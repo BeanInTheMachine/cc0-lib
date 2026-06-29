@@ -85,7 +85,7 @@ const LeaderboardPage = () => {
         </div>
         <div className="flex w-full flex-row justify-evenly gap-4 p-8 text-center text-zinc-400 text-md sm:text-lg">
           <span>not in the list?</span>
-          <Link href="/contribute">
+          <Link href="/upload">
             <div className="group flex w-full flex-row items-center gap-2 hover:text-prim">
               <span>submit yours</span>
               <Send className="h-4 w-4 group-hover:stroke-prim" />

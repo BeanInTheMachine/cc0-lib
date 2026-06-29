@@ -2,7 +2,6 @@ export const staticPages: string[] = [
   "",
   "leaderboard",
   "info",
-  "contribute",
   "disclaimer",
   "privacy",
   "sitemap",

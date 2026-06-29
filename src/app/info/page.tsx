@@ -131,7 +131,7 @@ const InfoPage = () => {
           <Description>
             be a{" "}
             <Link
-              href="/contribute"
+              href="/upload"
               className="bg-zinc-800 text-prim underline hover:bg-prim hover:text-zinc-800"
             >
               contributor
