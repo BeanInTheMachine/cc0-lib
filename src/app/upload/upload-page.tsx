@@ -40,7 +40,7 @@ export default function UploadPage() {
   const [step, setStep] = useState<Step>("form");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ id: string; slug: string; url: string } | null>(null);
+  const [result, setResult] = useState<{ id: string; slug: string; url: string; arweaveUrl: string } | null>(null);
   const [costEstimate, setCostEstimate] = useState<{ usdc: string; usd: string } | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -235,7 +235,8 @@ export default function UploadPage() {
       }
 
       const data = await res.json();
-      setResult(data);
+      const arweaveUrl = `https://arweave.net/${txId}`;
+      setResult({ ...data, arweaveUrl });
       setStep("success");
     } catch (err) {
       setError(parseUploadError(err));
@@ -257,15 +258,29 @@ export default function UploadPage() {
             <Check className="h-10 w-10 text-green-400" />
           </div>
           <span className="font-rubik text-4xl sm:text-6xl">uploaded</span>
-          <span className="text-lg text-white">
-            Your asset has been added to the library.
+          <span className="max-w-md text-center text-lg text-white">
+            Your file is permanently stored on Arweave. It&apos;ll appear on the
+            site in about a minute.
           </span>
           <a
-            href={result.url}
+            href={result.arweaveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-lg bg-prim px-6 py-3 font-rubik text-lg text-zinc-900 hover:bg-sec transition-colors"
           >
-            View asset
+            View on Arweave
           </a>
+          <div className="flex flex-col items-center gap-1">
+            <a
+              href={result.url}
+              className="rounded-lg bg-zinc-800 px-6 py-3 font-rubik text-lg text-white hover:bg-zinc-700 transition-colors"
+            >
+              View on site
+            </a>
+            <span className="text-xs text-zinc-500">
+              may take ~60s to go live
+            </span>
+          </div>
           <button
             onClick={() => {
               navigator.clipboard.writeText(result.url);

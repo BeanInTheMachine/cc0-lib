@@ -145,7 +145,7 @@ them automatically added to the site catalog.
 4. Paid: Connect wallet → TurboFactory.authenticated({ walletAdapter, token: 'base-usdc',
      fundingMode: OnDemandFunding }).uploadFile() → user approves in wallet → Arweave tx ID
 5. POST /api/submit → GitHub API appends metadata.json → Vercel redeploys
-6. Success page shows Arweave URL (instant) + site URL (appears in ~60s)
+6. Success page: primary "View on Arweave" link (instant) + secondary "View on site" link with a "may take ~60s to go live" note
 ```
 
 ### Arweave Tags for Rebuildability
@@ -371,7 +371,7 @@ redirect `www → apex`.
 9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
 10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
 11. **Free upload endpoint.** The production Turbo upload service (`upload.ardrive.io`) currently returns 404 on the unsigned x402 data endpoint. Free uploads use `upload.ardrive.dev` instead. The data still ends up on Arweave mainnet (the bundler aggregates and posts regardless of service domain), but this should be monitored and switched to the production endpoint once available.
-12. **Vercel redeploy lag.** After a successful upload + GitHub commit, it takes ~60 seconds for Vercel to redeploy and the new asset to appear on the site. The success page shows the Arweave URL (works immediately) and the site URL with a note that it may take a minute.
+12. **Vercel redeploy lag.** After a successful upload + GitHub commit, it takes ~60 seconds for Vercel to redeploy and the new asset to appear on the site. The success page surfaces the instant Arweave URL as the primary "View on Arweave" link and the site URL as a secondary "View on site" link with a "may take ~60s to go live" note.
 13. **Webpack-only build.** Next.js 16 defaults to Turbopack, but the `node:` scheme polyfills required by the Turbo SDK only work with webpack. `dev` and `build` scripts use `--webpack`. No runtime performance difference — output JS/CSS is identical.
 
 ## Dependency Summary
