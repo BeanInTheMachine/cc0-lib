@@ -8,7 +8,7 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 
 ## Current Status
 
-- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied.
+- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) blocked on a Turbo funding-credit race (see Known Limitations #14).
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
 - **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
 - **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel) and the domain the Farcaster manifest + account association are signed for. **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Recommended fix: make the apex the primary domain and redirect `www → apex`, so the canonical URLs (and all `miniapp-*.png` assets) serve directly without a redirect hop. The codebase resolves its base URL dynamically (see below).
@@ -373,18 +373,28 @@ redirect `www → apex`.
 12. **Vercel redeploy lag.** After a successful upload + GitHub commit, it takes ~60 seconds for Vercel to redeploy and the new asset to appear on the site. The success page surfaces the instant Arweave URL as the primary "View on Arweave" link and the site URL as a secondary "View on site" link with a "may take ~60s to go live" note.
 13. **Webpack-only build.** Next.js 16 defaults to Turbopack, but the `node:` scheme polyfills required by the Turbo SDK only work with webpack. `dev` and `build` scripts use `--webpack`. No runtime performance difference — output JS/CSS is identical.
 
+14. **Paid uploads (>100KB) are broken — funding race (OPEN, money-sensitive).** With `OnDemandFunding`, Turbo broadcasts the USDC-on-Base funding tx, then calls `submitFundTransaction` (`POST /account/balance/base-usdc`) to credit it. That credit call can fail before the tx is confirmed/visible on Base, throwing `Failed to submit fund transaction! ... 'turbo.submitFundTransaction(id)': <txId>` (`@ardrive/turbo-sdk .../payment.js:328`) and aborting the upload — **before** the SDK's own retry loop (`upload.js:664`) runs. The on-chain USDC payment succeeds but is never credited; funds are recoverable (not lost) via `turbo.submitFundTransaction({ txId })` once the tx confirms (credits land on the wallet's Turbo balance). **Do NOT just retry a failed paid upload — it broadcasts a second USDC tx and double-charges.** Stranded test payment: Base tx `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e`. Fix not yet implemented — see Open Issues.
+15. **Fresh-upload gateway propagation.** Right after a wallet-signed upload, ar.io gateways (e.g. `arweave.net`) can briefly return `404 — This hashpath cannot be resolved on this node, yet.` while the fleet indexes the new Turbo data item; it resolves within minutes (verified: the test AVIF served `image/avif` 200 from `arweave.net` and `turbo-gateway.com` shortly after). The data is on mainnet the whole time. Proposed hardening (not implemented): add `https://turbo-gateway.com` to `ARWEAVE_GATEWAYS` (serves Turbo uploads instantly) and drop `https://permaweb.io` (returns only a 114-byte HTML stub, never valid image data).
+
 ## Dependency Summary
 
 **Before v2.2.0:** 27 total — 22 runtime + 5 dev.
 **After v2.2.0:** 34 total — 29 runtime (`@ardrive/turbo-sdk`, `@walletconnect/ethereum-provider`, `ethers`, `crypto-browserify`, `stream-browserify`, `buffer`, `process` added) + 5 dev. Standardized on **npm**.
 
+## Open Issues / Next Session
+
+1. **Fix paid uploads (funding race) — priority.** Plan (not built): in `uploadPaid`, catch the `Failed to submit fund transaction` error, extract the `0x…` tx id, poll `turbo.submitFundTransaction({ txId })` until `status === 'confirmed'`, then retry `uploadFile` against the credited balance (no second charge); show a "Payment received — confirming…" state. Optional safety net: persist the tx id to `localStorage` with a "Resume" prompt.
+2. **Recover stranded payment** `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e` via `turbo.submitFundTransaction({ txId })` (same wallet, `token: 'base-usdc'`).
+3. **Optional gateway hardening** (proposed, not implemented): add `https://turbo-gateway.com`, drop `https://permaweb.io` in `src/lib/gateway-url.ts`.
+4. **WalletConnect for all uploads.** Every file upload now needs a wallet — set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in Vercel for users without an injected wallet.
+5. **Version mismatch.** `package.json` is `2.0.0` vs documented v2.2.0 — bump to match (consider v2.3.0 for the wallet-signed upload work).
+
 ## Last Verified
 
-- `tsc --noEmit`: 0 errors
-- `eslint src/**/*.{ts,tsx}`: 0 errors (pre-existing warnings only — `<img>` + exhaustive-deps)
-- `next build --webpack`: Compiled successfully, 17/17 pages (incl. `/upload` and static `/.well-known/farcaster.json`)
-- `next dev`: HTTP 200 on `/upload`; Arweave assets loading via bare tx URLs + gateway fallback; video thumbnails + poster; Working Files file-type cards; unique slugs
-- **Upload free (≤100KB):** wallet-signed `uploadFile` via prod `upload.ardrive.io` → Arweave mainnet → POST `/api/submit` (Git Data API) → metadata commit (pending end-to-end re-verification after redeploy)
-- **Farcaster Mini App:** manifest live and serving `accountAssociation` (FID 369904, domain `cc0-lib.xyz`); `fc:miniapp`/`fc:frame` embeds present on homepage + asset pages; tested functional inside Farcaster. Caveat: apex currently `308`-redirects to `www` (flip primary domain in Vercel).
-- Pushed to `BeanInTheMachine/cc0-lib` (`main`)
-- Catalog: 1,916 items (7 video, ~21 Working Files, rest Image/GIF/Audio/3D)
+- `tsc --noEmit`: 0 errors · `eslint`: 0 errors (pre-existing `<img>`/exhaustive-deps warnings only)
+- **Free upload (≤100KB): VERIFIED end-to-end on production.** Wallet-signed `uploadFile` via prod `upload.ardrive.io` → real Arweave mainnet data item → `POST /api/submit` (Git Data API) → committed to `metadata.json`. Live example: "Coolbeans Basepaint JoeC" (AVIF, tx `1AC93ihBwjWl_A59sfTRqqDTYgI5LXGRFJudnW3rJLM`) served `image/avif` (200) from `arweave.net` + `turbo-gateway.com`.
+- **Git Data API submit: VERIFIED in production** — real submit commits `a37ee22`, `4e4bb5f` appended to the >1MB `metadata.json`.
+- **Paid upload (>100KB): NOT WORKING** — funding race strands the USDC payment (see Known Limitation #14).
+- **Farcaster Mini App:** manifest live + verified; apex still `308`-redirects to `www` (flip in Vercel).
+- Latest push: `BeanInTheMachine/cc0-lib` `main` @ `e9060e4` (+ prod submit `4e4bb5f`).
+- Catalog: **1,917 items** — 1,916 legacy + 1 live user upload ("Coolbeans Basepaint JoeC", ID 2795).
