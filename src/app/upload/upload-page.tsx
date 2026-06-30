@@ -533,24 +533,12 @@ export default function UploadPage() {
             </div>
 
             {/* Wallet + cost info */}
-            {file && (
+            {file && isFreeUpload(file) && (
               <div className="rounded-xl bg-zinc-800/50 p-4">
-                {isFreeUpload(file) ? (
-                  <p className="text-sm text-zinc-400">
-                    Free upload — you&apos;ll sign a message with your wallet to
-                    store it on Arweave (no cost, no gas).
-                  </p>
-                ) : (
-                  <p className="text-sm text-zinc-400">
-                    Files over {formatSize(FREE_UPLOAD_LIMIT)} require payment.
-                    {costEstimate && (
-                      <span className="ml-1 text-white">
-                        Estimated: {costEstimate.usdc} (USDC on Base)
-                        <span className="text-zinc-500 ml-1">~${costEstimate.usd} USD</span>
-                      </span>
-                    )}
-                  </p>
-                )}
+                <p className="text-sm text-zinc-400">
+                  Free upload — you&apos;ll sign a message with your wallet to
+                  store it on Arweave (no cost, no gas).
+                </p>
                 {!walletAddress && (
                   <div className="mt-3 flex gap-2">
                     {typeof window !== "undefined" && window.ethereum && (
@@ -578,6 +566,28 @@ export default function UploadPage() {
                     Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
                   </p>
                 )}
+              </div>
+            )}
+
+            {file && !isFreeUpload(file) && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <p className="font-rubik text-sm text-amber-300">Paid uploads temporarily unavailable</p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Files over {formatSize(FREE_UPLOAD_LIMIT)} cannot be uploaded directly right now.
+                  Upload your file using an external Arweave service, then paste the transaction ID below.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <a href="https://app.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ArDrive</a>
+                  <a href="https://turbo.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ar.io Turbo</a>
+                  <a href="https://akord.com" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">Akord</a>
+                </div>
+                <button
+                  onClick={() => setMode("paste")}
+                  className="mt-3 flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 font-rubik text-xs text-zinc-900 hover:bg-amber-400 transition-colors"
+                >
+                  <Clipboard className="h-3 w-3" />
+                  Switch to Paste ID
+                </button>
               </div>
             )}
           </>
@@ -646,7 +656,7 @@ export default function UploadPage() {
         )}
 
         {/* Submit button */}
-        {(file || (mode === "paste" && arweaveId)) && (
+        {((mode === "file" && file && !needsPayment) || (mode === "paste" && arweaveId)) && (
           <div className="flex flex-col gap-3">
             {file && !walletAddress && (
               <span className="text-sm text-amber-400">
@@ -657,7 +667,7 @@ export default function UploadPage() {
               onClick={handleSubmit}
               disabled={
                 step === "uploading" ||
-                (!!file && !walletAddress) ||
+                (mode === "file" && !!file && !walletAddress) ||
                 !title ||
                 !description ||
                 !filetype
