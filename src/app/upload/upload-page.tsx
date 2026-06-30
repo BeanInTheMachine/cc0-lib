@@ -8,8 +8,11 @@ import {
   estimateCost,
   isFreeUpload,
   FREE_UPLOAD_LIMIT,
+  clearStrandedTx,
+  getStrandedFundingTx,
+  resumeFunding,
 } from "@/lib/upload/turbo-upload";
-import type { UploadMetadata } from "@/lib/upload/turbo-upload";
+import type { UploadMetadata, StrandedFundingTx } from "@/lib/upload/turbo-upload";
 import type { TurboUploadDataItemResponse } from "@ardrive/turbo-sdk";
 import { cn } from "@/lib/utils";
 import {
@@ -45,6 +48,10 @@ export default function UploadPage() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [strandedTx, setStrandedTx] = useState<StrandedFundingTx | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryResult, setRecoveryResult] = useState<string | null>(null);
+  const [fundingMessage, setFundingMessage] = useState("");
   const dropRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -59,6 +66,10 @@ export default function UploadPage() {
       setCostEstimate(null);
     }
   }, [file, needsPayment]);
+
+  useEffect(() => {
+    setStrandedTx(getStrandedFundingTx());
+  }, []);
 
   const handleFileDrop = useCallback((fileList: FileList | null) => {
     const f = fileList?.[0];
@@ -144,6 +155,41 @@ export default function UploadPage() {
     }
   }, []);
 
+  const handleResumeFunding = useCallback(async () => {
+    if (!strandedTx) return;
+    setRecovering(true);
+    setRecoveryResult(null);
+    try {
+      const hasInjected = typeof window !== "undefined" && !!window.ethereum;
+      const signer = hasInjected ? await connectInjected() : await connectWalletConnect();
+      const address = await signer.getAddress();
+      setWalletAddress(address);
+
+      const result = await resumeFunding(strandedTx.txId, { getSigner: () => signer } as any);
+      if (result.status === "confirmed") {
+        clearStrandedTx();
+        setStrandedTx(null);
+        setRecoveryResult("Payment confirmed! Your funds are now available for upload.");
+      } else if (result.status === "pending") {
+        setRecoveryResult("Payment still pending on Base. Try again in a moment.");
+      } else {
+        clearStrandedTx();
+        setStrandedTx(null);
+        setRecoveryResult("Payment recovery failed. The transaction may have reverted or the connected wallet differs from the one that made the payment.");
+      }
+    } catch {
+      setRecoveryResult("Recovery failed. Check that the correct wallet is connected and try again.");
+    } finally {
+      setRecovering(false);
+    }
+  }, [strandedTx, connectInjected, connectWalletConnect]);
+
+  const handleDismissStranded = useCallback(() => {
+    clearStrandedTx();
+    setStrandedTx(null);
+    setRecoveryResult(null);
+  }, []);
+
   function parseUploadError(err: unknown): string {
     if (!(err instanceof Error)) return "Upload failed";
     const msg = err.message ?? "";
@@ -200,7 +246,12 @@ export default function UploadPage() {
         if (isFreeUpload(file)) {
           uploadResult = await uploadFree(file, metadata, walletAdapter as any);
         } else {
-          uploadResult = await uploadPaid(file, metadata, walletAdapter as any);
+          uploadResult = await uploadPaid(file, metadata, walletAdapter as any, (progress) => {
+            setFundingMessage(progress.message || "");
+            if (progress.phase === "funding") setProgress(10);
+            else if (progress.phase === "confirming") setProgress(20);
+            else if (progress.phase === "uploading") setProgress(50);
+          });
         }
 
         txId = uploadResult.id;
@@ -314,6 +365,8 @@ export default function UploadPage() {
               setArweaveId("");
               setResult(null);
               setWalletAddress(null);
+              setFundingMessage("");
+              setStrandedTx(getStrandedFundingTx());
             }}
             className="text-zinc-400 hover:text-white underline mt-4"
           >
@@ -334,7 +387,7 @@ export default function UploadPage() {
           <span className="font-rubik text-4xl sm:text-6xl">error</span>
           <span className="max-w-md text-center text-white">{error}</span>
           <button
-            onClick={() => setStep("form")}
+            onClick={() => { setStep("form"); setFundingMessage(""); }}
             className="rounded-lg bg-zinc-800 px-6 py-3 font-rubik text-lg text-white hover:bg-zinc-700 transition-colors"
           >
             Try again
@@ -348,6 +401,39 @@ export default function UploadPage() {
     <Container>
       <div className="duration-250 peer flex w-full flex-col gap-8 bg-transparent px-4 py-16 text-prim drop-shadow-md transition-all ease-linear sm:px-16">
         <span className="font-rubik text-4xl sm:text-6xl">upload</span>
+
+        {strandedTx && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="font-rubik text-amber-300">Pending payment detected</span>
+                <span className="text-zinc-400">
+                  A previous upload payment was sent but not confirmed. Your USDC was sent and is recoverable.
+                </span>
+                {recoveryResult && (
+                  <span className={`mt-1 ${recoveryResult.includes("confirmed") ? "text-green-400" : "text-amber-400"}`}>
+                    {recoveryResult}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={handleResumeFunding}
+                  disabled={recovering}
+                  className="rounded-lg bg-amber-500 px-3 py-1.5 font-rubik text-xs text-zinc-900 hover:bg-amber-400 transition-colors disabled:opacity-50"
+                >
+                  {recovering ? "Checking..." : "Resume"}
+                </button>
+                <button
+                  onClick={handleDismissStranded}
+                  className="rounded-lg bg-zinc-700 px-3 py-1.5 font-rubik text-xs text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mode tabs */}
         <div className="flex gap-2">
@@ -589,11 +675,16 @@ export default function UploadPage() {
             </button>
 
             {step === "uploading" && (
-              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-prim transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
+              <div className="flex w-full flex-col gap-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-prim transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                {fundingMessage && (
+                  <span className="text-center text-sm text-zinc-400">{fundingMessage}</span>
+                )}
               </div>
             )}
           </div>
