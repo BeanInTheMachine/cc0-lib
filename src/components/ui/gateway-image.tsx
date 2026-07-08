@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { ARWEAVE_GATEWAYS, extractArweaveId } from "@/lib/gateway-url";
 import { cn } from "@/lib/utils";
 import { File, FileImage, FileText, FolderArchive } from "lucide-react";
-import NogglesSpinner from "@/components/anim/noggles-spinner";
 
 type GatewayImageProps = {
   src: string;
@@ -53,7 +52,6 @@ const GatewayImage = ({
 }: GatewayImageProps) => {
   const [currentSrc, setCurrentSrc] = useState(() => normalizeSrc(src));
   const [failed, setFailed] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const gatewayIndex = useRef(0);
   const fallbackUrls = useRef<string[] | null>(null);
 
@@ -104,20 +102,6 @@ const GatewayImage = ({
     );
   }
 
-  if (isLoading) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center bg-zinc-800/70",
-          className
-        )}
-        style={{ minWidth: width, minHeight: height }}
-      >
-        <NogglesSpinner size={24} />
-      </div>
-    );
-  }
-
   return (
     <img
       src={currentSrc}
@@ -127,7 +111,6 @@ const GatewayImage = ({
       height={height}
       loading={loading}
       onError={handleError}
-      onLoad={() => setIsLoading(false)}
     />
   );
 };
