@@ -36621,5 +36621,33 @@
     "Social Link": "",
     "File": "https://arweave.net/gIpsvYmi33X57VFBYSVte4DFvCXgGFIusedhjhVMi4k",
     "ParentDB": ""
+  },
+  {
+    "id": "XHkjJRFM8oN5zaAn6vxr4",
+    "Title": "Empanadas",
+    "Description": "Made by Nadiecito: https://farcaster.xyz/nadiecito.eth  For Lil Nouns Scavenger Hunt NYC edition, can find artworks in his site https://nounscolombia.vercel.app/#work",
+    "Type": "Image",
+    "Filetype": "PNG",
+    "Thumbnails": [
+      {
+        "name": "EMPANADAS.png",
+        "url": "https://arweave.net/hF_y49XlugcqTeyQrhWGGmgOCRDwfz9kyK-2nBYycDI",
+        "rawUrl": "https://arweave.net/hF_y49XlugcqTeyQrhWGGmgOCRDwfz9kyK-2nBYycDI"
+      }
+    ],
+    "ThumbnailURL": "https://arweave.net/hF_y49XlugcqTeyQrhWGGmgOCRDwfz9kyK-2nBYycDI",
+    "Source": "",
+    "Status": "published",
+    "Tags": [
+      "lil nouns",
+      "scavenger hunt",
+      "empanadas",
+      "NYC"
+    ],
+    "ENS": "nadiecito.eth",
+    "ID": 2803,
+    "Social Link": "",
+    "File": "https://arweave.net/hF_y49XlugcqTeyQrhWGGmgOCRDwfz9kyK-2nBYycDI",
+    "ParentDB": ""
   }
 ]
