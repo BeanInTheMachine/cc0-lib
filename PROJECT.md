@@ -8,19 +8,19 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 
 ## Current Status
 
-- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) blocked on a Turbo funding-credit race (see Known Limitations #14).
+- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) temporarily disabled (requires Base USDC in wallet for Turbo on-demand funding — see Known Limitations #14).
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
 - **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
 - **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel) and the domain the Farcaster manifest + account association are signed for. **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Recommended fix: make the apex the primary domain and redirect `www → apex`, so the canonical URLs (and all `miniapp-*.png` assets) serve directly without a redirect hop. The codebase resolves its base URL dynamically (see below).
 - **Resurrected by:** coolbeans1r.eth (Farcaster FID `369904`)
-- **Version:** `2.2.0`.
+- **Version:** `2.3.0`.
 
 ## Architectural Decisions
 
 | Decision | Reasoning |
 |----------|-----------|
 | **Static `metadata.json` index** | Replaces live Notion DB and Bundlr GraphQL queries. Single source of truth for the gallery. |
-| **Arweave for file storage only** | All assets permanently stored on Arweave. Multi-gateway fallback (`arweave.net`, `ar-io.net`, `permaweb.io`) for delivery resilience. |
+| **Arweave for file storage only** | All assets permanently stored on Arweave. Multi-gateway fallback (`arweave.net`, `ar-io.net`, `turbo-gateway.com`) for delivery resilience. `turbo-gateway.com` serves fresh Turbo uploads instantly (before bundle confirmation on Arweave mainnet). |
 | **Bare Arweave tx URLs** | Assets are single data transactions served at `https://arweave.net/{txId}` — **not** path manifests. Appending the filename (`/{txId}/{filename}`) returns 404, so all `ThumbnailURL`/`File` values are the bare tx URL. |
 | **`<img>` + gateway rotation** | Arweave assets render via `GatewayImage` (plain `<img>` with `onError` gateway rotation), bypassing the Next.js image optimizer (which broke on Arweave). `next/image` is still used only for the cloudnouns cursor PFP and the video-player overlay logo. |
 | **Configurable site URL** | `getSiteUrl()` resolves the base URL in order: `NEXT_PUBLIC_SITE_URL` → Vercel's `VERCEL_PROJECT_PRODUCTION_URL` → fallback `https://cc0-lib.xyz`. Drives every canonical/OG/Twitter/sitemap/robots/share URL **and the Farcaster manifest + embeds**. Set `NEXT_PUBLIC_SITE_URL=https://cc0-lib.xyz` in production so all URLs agree on the canonical apex. |
@@ -41,7 +41,7 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 ┌─────────────────────────────────────────────────────────────────┐
 │                      DATA LAYER (Storage)                        │
 │  Arweave — permanently paid transactions, multi-gateway delivery │
-│  Bare tx URLs: arweave.net/{txId} → ar-io.net → permaweb.io      │
+│  Bare tx URLs: arweave.net/{txId} → ar-io.net → turbo-gateway.com       │
 │  New uploads via Turbo SDK (ardrive.io bundler)                   │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
@@ -131,10 +131,10 @@ them automatically added to the site catalog.
 
 ### Payment Tiers
 
-| Tier | Max Size | Wallet Required | Cost |
-|------|----------|-----------------|------|
-| Free | ≤100KB | EIP-1193 (signature only) | $0 (no gas) |
-| Paid | Unlimited | EIP-1193 (MetaMask, WalletConnect) | USDC on Base (on-demand funding) |
+| Tier | Max Size | Wallet Required | Cost | Status |
+|------|----------|-----------------|------|--------|
+| Free | ≤100KB | EIP-1193 (signature only) | $0 (no gas) | Live |
+| Paid | Unlimited | EIP-1193 (MetaMask, WalletConnect) | USDC on Base | Temporarily disabled |
 
 ### Upload Flow
 
@@ -143,9 +143,9 @@ them automatically added to the site catalog.
 2. Connect wallet (required for all file uploads) → wrap EIP-1193 provider in an EthereumWalletAdapter
 3. Free (≤100KB): TurboFactory.authenticated({ walletAdapter, token: 'base-usdc' }).uploadFile()
      → user signs the data item (no cost, no gas) → Arweave mainnet tx ID
-4. Paid (>100KB): same + fundingMode: OnDemandFunding → user approves USDC on Base → Arweave mainnet tx ID
+4. Paid (>100KB): disabled — shows notice with links to external Arweave uploaders (ArDrive, ar.io Turbo, Akord) + "Switch to Paste ID" button
 5. POST /api/submit → Git Data API commit to metadata.json → Vercel redeploys
-6. Success page: primary "View on Arweave" link (instant) + secondary "View on site" link with a "may take ~60s to go live" note
+6. Success page: primary "View image" link (turbo-gateway.com — instant) + secondary "View on site" link with "may take a few hours to appear" note
 ```
 
 ### Arweave Tags for Rebuildability
@@ -174,8 +174,8 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 ### Turbo SDK Details
 
 - **Upload service:** `upload.ardrive.io` (production, authenticated) for all uploads — both free and paid
-- **On-demand funding:** Turbo SDK's `OnDemandFunding` class tops up USDC credits from the connected wallet in a single transaction during upload, with a 10% buffer (paid >100KB only)
-- **File handling:** All uploads are wallet-signed data items via `uploadFile` (stream factory `fileStreamFactory` + `fileSizeFactory`). Free (≤100KB) omits `fundingMode` and relies on Turbo's free-tier waiver; paid (>100KB) attaches `OnDemandFunding`
+- **On-demand funding:** Built but disabled — `OnDemandFunding` class tops up USDC credits from the connected wallet during upload with a 10% buffer (requires Base USDC). A funding race retry/poll mechanism (`pollForFundConfirmation`, `resumeFunding`) is implemented in `turbo-upload.ts` for when re-enabled.
+- **File handling:** All uploads are wallet-signed data items via `uploadFile` (stream factory `fileStreamFactory` + `fileSizeFactory`). Free (≤100KB) omits `fundingMode` and relies on Turbo's free-tier waiver.
 
 ### Submit API Changes (v2.2.0)
 
@@ -196,13 +196,13 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `scripts/dedup-metadata.ts` | One-time script: removes duplicate items sharing same title + type + filetype + ENS uploader |
 | `src/data/metadata.json` | Static catalog — array of `Item` objects (1,916 entries after dedup of 2,797 → 1,916) |
 | `src/lib/metadata.ts` | Central data access: `readMetadata()`, `getItemBySlug()`, `getItemSlug()`, `getLeaderboard()`, `slugify()`, `shuffle()`, `shortDomainName()` |
-| `src/lib/gateway-url.ts` | `ARWEAVE_GATEWAYS` list + `extractArweaveId()` |
+| `src/lib/gateway-url.ts` | `ARWEAVE_GATEWAYS` list (`arweave.net`, `ar-io.net`, `turbo-gateway.com`) + `extractArweaveId()`. `turbo-gateway.com` serves fresh Turbo uploads instantly; `permaweb.io` removed (returned 200 OK HTML stub that blocked `<img>` `onError` fallback). |
 | `src/lib/site-url.ts` | `getSiteUrl()` — env-driven base URL resolver |
 | `src/lib/constants.ts` | Static page list (incl. `"upload"`), `DEV_MODE` |
-| `src/lib/upload/turbo-upload.ts` | Turbo SDK wrapper: `uploadFree()` (authenticated, ≤100KB, no `fundingMode` — relies on Turbo's free-tier waiver), `uploadPaid()` (authenticated + OnDemandFunding), `estimateCost()`, `isFreeUpload()`. Both upload via prod `upload.ardrive.io` and embed CC0-lib Arweave tags. |
+| `src/lib/upload/turbo-upload.ts` | Turbo SDK wrapper: `uploadFree()` (authenticated, ≤100KB, no `fundingMode`), `uploadPaid()` (authenticated + OnDemandFunding with funding race retry + `pollForFundConfirmation` + `resumeFunding`), `estimateCost()`, `isFreeUpload()`, `getStrandedFundingTx()` / `clearStrandedTx()` (localStorage crash recovery). `UploadProgress` callback type for UI funding/confirming feedback. Both upload via prod `upload.ardrive.io` and embed CC0-lib Arweave tags. |
 | `src/app/api/submit/route.ts` | Public serverless submit endpoint — in-memory rate limiting (5/10min/IP), Zod validation (ENS optional), and a GitHub **Git Data API** commit flow (blob → tree → commit → update ref) with retry. Reads `metadata.json` via the Blob API so files >1 MB work (the Contents API omits content past 1 MB). Requires `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_REPO` in all environments. |
 | `src/app/upload/page.tsx` | Server RSC — page metadata (title, OG, Twitter cards) via `getSiteUrl()` |
-| `src/app/upload/upload-page.tsx` | Client component (~400 lines) — drag-and-drop file zone with preview and size-based tier indicator, metadata form (title, description, type dropdown, filetype, tags, optional ENS), wallet connection (injected MetaMask + WalletConnect QR modal), cost estimate display, upload progress bar via Turbo SDK events, success page with Arweave + site URLs, error handling, "Paste Arweave ID" fallback tab |
+| `src/app/upload/upload-page.tsx` | Client component (~700 lines) — drag-and-drop file zone with preview and size-based tier indicator, metadata form (title, description, type dropdown, filetype, tags, optional ENS), wallet connection (injected MetaMask + WalletConnect QR modal), paid upload notice with external uploader links (ArDrive, ar.io Turbo, Akord) + "Switch to Paste ID" for files >100KB, funding progress callback with phase display ("Sending payment…", "Waiting for payment to confirm…"), stranded funding tx banner with "Resume" button, success page with turbo-gateway image link + site link, error handling, "Paste Arweave ID" fallback tab |
 | `src/app/robots.ts` | Dynamic robots (sitemap URL follows `getSiteUrl()`) |
 | `src/app/sitemap.tsx` | Dynamic XML sitemap (URLs from `getSiteUrl()`) |
 | `src/components/ui/gateway-image.tsx` | Client component: `<img>` with `onError` Arweave gateway rotation; styled file-type fallback cards (icon + title) for non-image types; `filetype` prop support |
@@ -243,6 +243,14 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `src/lib/utils.ts` | Stripped dead helpers; kept `cn`, `getLikedItems`, `blobSize` |
 | `src/lib/metadata.ts` | Added `getItemSlug(item)` — unique slugs via `title-last6chars`; updated `getItemBySlug()` to match by ID suffix with title fallback |
 | `src/data/metadata.json` | Deduplicated: 2,797 → 1,916 items (881 same-title+type+filetype+ENS duplicates removed); video ThumbnailURLs point to local `/thumbnails/` |
+
+### Key Modified Files (v2.3.0)
+
+| File | Changes |
+|------|---------|
+| `src/lib/gateway-url.ts` | Replaced `permaweb.io` with `turbo-gateway.com` in `ARWEAVE_GATEWAYS`. `turbo-gateway.com` serves freshly-uploaded Turbo data items instantly (before bundle confirmation on Arweave mainnet). `permaweb.io` was removed because it returns 200 OK with an HTML 404 stub, which prevents `<img>` `onError` from firing in the `GatewayImage` fallback chain. |
+| `src/lib/upload/turbo-upload.ts` | Added `pollForFundConfirmation()` — polls `turbo.submitFundTransaction()` every 3s (120s timeout) to wait for on-chain funding confirmation. `uploadPaid()` catches the funding race error (`Failed to submit fund transaction`), extracts the tx ID, persists to localStorage, polls for confirmation, then retries `uploadFile` without `OnDemandFunding` (balance already credited — no double-charge). Added `resumeFunding()` for manual recovery. Added `UploadProgress` type + callback for phase-based UI feedback. Added `getStrandedFundingTx()` / `clearStrandedTx()` localStorage helpers (24h expiry). |
+| `src/app/upload/upload-page.tsx` | Paid uploads (>100KB) now show an amber notice with links to external Arweave uploaders (ArDrive, ar.io Turbo, Akord) and a "Switch to Paste ID" button that preserves the metadata form. Submit button only renders for free files or paste mode (was incorrectly showing for large files). Stranded funding tx banner with "Resume" and "Dismiss" buttons. Progress callback wiring for funding/confirming phases. Success page: "View image" links to `turbo-gateway.com` (instant), "may take a few hours" replaces "~60s". |
 
 ### Deleted Files/Directories
 
@@ -370,11 +378,11 @@ redirect `www → apex`.
 9. **Working Files previews.** Items like ZIP/CSV/JSON/PLAIN have no visual thumbnail — they render as styled file-type fallback cards (icon + title) in the gallery.
 10. **Video thumbnails.** 7 videos have pre-generated local thumbnails. New video submissions would need the thumbnail generation script re-run.
 11. **Free uploads are wallet-signed (mainnet).** Attempts to offer free uploads *without* a wallet failed: prod `upload.ardrive.io` 404s the unsigned x402 endpoint (`POST /x402/data-item/unsigned`), and the staging `upload.ardrive.dev` accepts unsigned x402 data but does **not** persist it to Arweave mainnet — verified for a real upload (`arweave.net/graphql` returned `transaction: null` and every production gateway 404'd the data item; only `*.dev` gateways recognized it). So free uploads now use the **authenticated** client (`uploadFile` signed by the connected EIP-1193 wallet, no `fundingMode`) against prod `upload.ardrive.io`: the user signs a data item (no cost, no gas), Turbo waives the ≤100KB fee, and it posts to mainnet. Every file upload therefore requires a wallet (the "Paste Arweave ID" mode does not).
-12. **Vercel redeploy lag.** After a successful upload + GitHub commit, it takes ~60 seconds for Vercel to redeploy and the new asset to appear on the site. The success page surfaces the instant Arweave URL as the primary "View on Arweave" link and the site URL as a secondary "View on site" link with a "may take ~60s to go live" note.
+12. **Turbo-to-Arweave propagation delay.** Turbo uploads are data items served instantly via `turbo-gateway.com` but take hours to propagate to standard Arweave gateways (`arweave.net`) because Turbo batches data items into on-chain transactions periodically. The success page links to `turbo-gateway.com` (instant) and warns "may take a few hours to appear" on the site. `GatewayImage` uses `turbo-gateway.com` as a fallback so images load during the propagation window.
 13. **Webpack-only build.** Next.js 16 defaults to Turbopack, but the `node:` scheme polyfills required by the Turbo SDK only work with webpack. `dev` and `build` scripts use `--webpack`. No runtime performance difference — output JS/CSS is identical.
 
-14. **Paid uploads (>100KB) are broken — funding race (OPEN, money-sensitive).** With `OnDemandFunding`, Turbo broadcasts the USDC-on-Base funding tx, then calls `submitFundTransaction` (`POST /account/balance/base-usdc`) to credit it. That credit call can fail before the tx is confirmed/visible on Base, throwing `Failed to submit fund transaction! ... 'turbo.submitFundTransaction(id)': <txId>` (`@ardrive/turbo-sdk .../payment.js:328`) and aborting the upload — **before** the SDK's own retry loop (`upload.js:664`) runs. The on-chain USDC payment succeeds but is never credited; funds are recoverable (not lost) via `turbo.submitFundTransaction({ txId })` once the tx confirms (credits land on the wallet's Turbo balance). **Do NOT just retry a failed paid upload — it broadcasts a second USDC tx and double-charges.** Stranded test payment: Base tx `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e`. Fix not yet implemented — see Open Issues.
-15. **Fresh-upload gateway propagation.** Right after a wallet-signed upload, ar.io gateways (e.g. `arweave.net`) can briefly return `404 — This hashpath cannot be resolved on this node, yet.` while the fleet indexes the new Turbo data item; it resolves within minutes (verified: the test AVIF served `image/avif` 200 from `arweave.net` and `turbo-gateway.com` shortly after). The data is on mainnet the whole time. Proposed hardening (not implemented): add `https://turbo-gateway.com` to `ARWEAVE_GATEWAYS` (serves Turbo uploads instantly) and drop `https://permaweb.io` (returns only a 114-byte HTML stub, never valid image data).
+14. **Paid uploads (>100KB) — temporarily disabled (money-sensitive).** With `OnDemandFunding`, Turbo broadcasts the USDC-on-Base funding tx, then calls `submitFundTransaction` (`POST /account/balance/base-usdc`) to credit it. That credit call can fail before the tx is confirmed/visible on Base, throwing `Failed to submit fund transaction! ... 'turbo.submitFundTransaction(id)': <txId>` (`@ardrive/turbo-sdk .../payment.js:328`) and aborting the upload — **before** the SDK's own retry loop (`upload.js:664`) runs. The on-chain USDC payment succeeds but is never credited; funds are recoverable (not lost) via `turbo.submitFundTransaction({ txId })` once the tx confirms (credits land on the wallet's Turbo balance). **A retry/poll mechanism is built** (`pollForFundConfirmation` + `resumeFunding` in `turbo-upload.ts`): catches the funding race error, extracts the tx ID, polls every 3s for up to 120s, then retries `uploadFile` without `OnDemandFunding` (balance already credited — no double-charge). Stranded txs are persisted to localStorage with a "Resume" banner on the upload page. **However, paid uploads are disabled entirely on the page** because successful payment requires the wallet to hold both ETH and USDC on Base (chain 8453) — the current wallet setup doesn't guarantee this. The large-file path now shows external uploader links + "Switch to Paste ID". Stranded test payment: Base tx `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e`.
+15. **Fresh-upload gateway propagation — RESOLVED in v2.3.0.** `turbo-gateway.com` added to `ARWEAVE_GATEWAYS` (serves Turbo data items instantly, before bundle confirmation on Arweave mainnet). `permaweb.io` removed (was returning 200 OK with an HTML 404 stub, which blocked `<img>` `onError` from triggering and caused broken images instead of the fallback card). New uploads now load in the gallery immediately via `turbo-gateway.com` while standard Arweave gateways index the bundle transaction.
 
 ## Dependency Summary
 
@@ -383,18 +391,19 @@ redirect `www → apex`.
 
 ## Open Issues / Next Session
 
-1. **Fix paid uploads (funding race) — priority.** Plan (not built): in `uploadPaid`, catch the `Failed to submit fund transaction` error, extract the `0x…` tx id, poll `turbo.submitFundTransaction({ txId })` until `status === 'confirmed'`, then retry `uploadFile` against the credited balance (no second charge); show a "Payment received — confirming…" state. Optional safety net: persist the tx id to `localStorage` with a "Resume" prompt.
+1. **Re-enable paid uploads (>100KB).** The funding race retry/poll mechanism is built and staged in `turbo-upload.ts`, but paid uploads are disabled on the page because successful payment requires the wallet to hold both ETH and USDC on Base (chain 8453). Before re-enabling: (a) ensure the wallet is on Base before the funding tx fires (add chain detection + auto-switch), (b) verify the user has USDC on Base, or (c) switch to `ario` native token (no chain switching) if ar.io ecosystem adoption makes that viable. 
 2. **Recover stranded payment** `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e` via `turbo.submitFundTransaction({ txId })` (same wallet, `token: 'base-usdc'`).
-3. **Optional gateway hardening** (proposed, not implemented): add `https://turbo-gateway.com`, drop `https://permaweb.io` in `src/lib/gateway-url.ts`.
+3. ~~**Gateway hardening.** Add `https://turbo-gateway.com`, drop `https://permaweb.io`.~~ **RESOLVED in v2.3.0.**
 4. **WalletConnect for all uploads.** Every file upload now needs a wallet — set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in Vercel for users without an injected wallet.
 5. **Version mismatch.** `package.json` is `2.0.0` vs documented v2.2.0 — bump to match (consider v2.3.0 for the wallet-signed upload work).
 
 ## Last Verified
 
 - `tsc --noEmit`: 0 errors · `eslint`: 0 errors (pre-existing `<img>`/exhaustive-deps warnings only)
-- **Free upload (≤100KB): VERIFIED end-to-end on production.** Wallet-signed `uploadFile` via prod `upload.ardrive.io` → real Arweave mainnet data item → `POST /api/submit` (Git Data API) → committed to `metadata.json`. Live example: "Coolbeans Basepaint JoeC" (AVIF, tx `1AC93ihBwjWl_A59sfTRqqDTYgI5LXGRFJudnW3rJLM`) served `image/avif` (200) from `arweave.net` + `turbo-gateway.com`.
-- **Git Data API submit: VERIFIED in production** — real submit commits `a37ee22`, `4e4bb5f` appended to the >1MB `metadata.json`.
-- **Paid upload (>100KB): NOT WORKING** — funding race strands the USDC payment (see Known Limitation #14).
+- **Free upload (≤100KB): VERIFIED end-to-end on production.** Wallet-signed `uploadFile` via prod `upload.ardrive.io` → real Arweave mainnet data item → `POST /api/submit` (Git Data API) → committed to `metadata.json`. 20+ real user uploads confirmed in production (no issues). Images serve instantly via `turbo-gateway.com` fallback in `GatewayImage`; propagate to `arweave.net` within hours.
+- **Git Data API submit: VERIFIED in production** — 20+ real submit commits (IDs `6250829` through `9a7fb95`) appended to the >1MB `metadata.json`. Works reliably under sustained multi-user load.
+- **Paid upload (>100KB): DISABLED** — funding race retry/poll mechanism built but paid path disabled on the page; user needs both ETH and USDC on Base for Turbo on-demand funding.
 - **Farcaster Mini App:** manifest live + verified; apex still `308`-redirects to `www` (flip in Vercel).
-- Latest push: `BeanInTheMachine/cc0-lib` `main` @ `e9060e4` (+ prod submit `4e4bb5f`).
-- Catalog: **1,917 items** — 1,916 legacy + 1 live user upload ("Coolbeans Basepaint JoeC", ID 2795).
+- **Gateway delivery:** `turbo-gateway.com` → `arweave.net` → `ar-io.net` fallback chain. Fresh Turbo uploads load instantly from `turbo-gateway.com` (before bundle confirmation on Arweave mainnet).
+- Latest push: `BeanInTheMachine/cc0-lib` `main` @ `9a7fb95`.
+- Catalog: **1,936+ items** — 1,916 legacy + 20+ live user uploads.
