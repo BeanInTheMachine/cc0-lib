@@ -297,7 +297,8 @@ export default function UploadPage() {
         );
       }
       const arweaveUrl = `https://arweave.net/${txId}`;
-      setResult({ ...data, arweaveUrl });
+      const turboUrl = `https://turbo-gateway.com/${txId}`;
+      setResult({ ...data, arweaveUrl: turboUrl });
       setStep("success");
     } catch (err) {
       setError(parseUploadError(err));
@@ -320,8 +321,8 @@ export default function UploadPage() {
           </div>
           <span className="font-rubik text-4xl sm:text-6xl">uploaded</span>
           <span className="max-w-md text-center text-lg text-white">
-            Your file is permanently stored on Arweave. It&apos;ll appear on the
-            site in about a minute.
+            Your file is permanently stored on Arweave. It may take up to a few
+            hours to appear on the site as Arweave gateways index your content.
           </span>
           <a
             href={result.arweaveUrl}
@@ -329,7 +330,7 @@ export default function UploadPage() {
             rel="noopener noreferrer"
             className="rounded-lg bg-prim px-6 py-3 font-rubik text-lg text-zinc-900 hover:bg-sec transition-colors"
           >
-            View on Arweave
+            View image
           </a>
           <div className="flex flex-col items-center gap-1">
             <a
@@ -339,7 +340,7 @@ export default function UploadPage() {
               View on site
             </a>
             <span className="text-xs text-zinc-500">
-              may take ~60s to go live
+              may take a few hours to appear
             </span>
           </div>
           <button

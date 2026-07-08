@@ -1,7 +1,7 @@
 export const ARWEAVE_GATEWAYS = [
   "https://arweave.net",
   "https://ar-io.net",
-  "https://permaweb.io",
+  "https://turbo-gateway.com",
 ];
 
 const ARWEAVE_TX_ID_RE = /arweave\.net\/([A-Za-z0-9_-]{43})/;
