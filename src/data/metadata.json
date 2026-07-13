@@ -39392,5 +39392,32 @@
     "Social Link": "",
     "File": "https://arweave.net/sPMFqcQumh8wRFSXsL1peMqbwV8wtdhBLUrA7FlWWiY",
     "ParentDB": ""
+  },
+  {
+    "id": "cDbPtuSFuGZoZD40g1yf8",
+    "Title": "Stake it",
+    "Description": "Made by Nadiecito: https://farcaster.xyz/nadiecito.eth can find artworks in his site https://nounscolombia.vercel.app/#work",
+    "Type": "Image",
+    "Filetype": "PNG",
+    "Thumbnails": [
+      {
+        "name": "stake it meth.png",
+        "url": "https://arweave.net/cv8raU7ytWPaBzIMJI_1opmy7Qsqk19ASSOXqhs-J9o",
+        "rawUrl": "https://arweave.net/cv8raU7ytWPaBzIMJI_1opmy7Qsqk19ASSOXqhs-J9o"
+      }
+    ],
+    "ThumbnailURL": "https://arweave.net/cv8raU7ytWPaBzIMJI_1opmy7Qsqk19ASSOXqhs-J9o",
+    "Source": "",
+    "Status": "published",
+    "Tags": [
+      "stake",
+      "eth",
+      "cooking bad"
+    ],
+    "ENS": "nadiecito.eth",
+    "ID": 2904,
+    "Social Link": "",
+    "File": "https://arweave.net/cv8raU7ytWPaBzIMJI_1opmy7Qsqk19ASSOXqhs-J9o",
+    "ParentDB": ""
   }
 ]
