@@ -38872,5 +38872,33 @@
     "Social Link": "",
     "File": "https://arweave.net/LeJbxXDHjInYZmkJyPNAYoaiUaBuYmFontO5IcxrLg4",
     "ParentDB": ""
+  },
+  {
+    "id": "I4cJA5BKqPyrldoDYgTKx",
+    "Title": "Zebra Fashion Week",
+    "Description": "Made by Nadiecito: https://farcaster.xyz/nadiecito.eth  For Lil Nouns Scavenger Hunt NYC edition, can find artworks in his site https://nounscolombia.vercel.app/#work",
+    "Type": "Image",
+    "Filetype": "PNG",
+    "Thumbnails": [
+      {
+        "name": "Zebra Fashion Week.png",
+        "url": "https://arweave.net/4dsPzqsXxkTi-06o-t5ysmtdFmFU50yayXp4cdm67Yg",
+        "rawUrl": "https://arweave.net/4dsPzqsXxkTi-06o-t5ysmtdFmFU50yayXp4cdm67Yg"
+      }
+    ],
+    "ThumbnailURL": "https://arweave.net/4dsPzqsXxkTi-06o-t5ysmtdFmFU50yayXp4cdm67Yg",
+    "Source": "",
+    "Status": "published",
+    "Tags": [
+      "zebra",
+      "fashion",
+      "week",
+      "runway"
+    ],
+    "ENS": "nadiecito.eth",
+    "ID": 2885,
+    "Social Link": "",
+    "File": "https://arweave.net/4dsPzqsXxkTi-06o-t5ysmtdFmFU50yayXp4cdm67Yg",
+    "ParentDB": ""
   }
 ]
