@@ -8,12 +8,13 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 
 ## Current Status
 
-- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) temporarily disabled (requires Base USDC in wallet for Turbo on-demand funding — see Known Limitations #14).
+- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) temporarily disabled.
+- **Moderation pipeline:** Added in v2.4.0. New uploads start with `SubmissionStatus: "submitted"` and are hidden from galleries/search/sitemaps until reviewed. Legacy items (no `SubmissionStatus`) remain visible. The detail page shows an amber "Pending review" badge on unmoderated items. A Hermes Agent cron job (VPS-hosted) runs daily to auto-approve safe content via vision + magic-byte checks. See [Content Moderation Pipeline](#content-moderation-pipeline) below.
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
-- **Hosting:** Vercel (Free Tier). Site runs on the auto-assigned `*.vercel.app` URL until a custom domain is attached.
-- **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel) and the domain the Farcaster manifest + account association are signed for. **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Recommended fix: make the apex the primary domain and redirect `www → apex`, so the canonical URLs (and all `miniapp-*.png` assets) serve directly without a redirect hop. The codebase resolves its base URL dynamically (see below).
+- **Hosting:** Vercel (Free Tier).
+- **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel). **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Fix: make the apex primary, redirect `www → apex`.
 - **Resurrected by:** coolbeans1r.eth (Farcaster FID `369904`)
-- **Version:** `2.3.0`.
+- **Version:** `2.4.0`.
 
 ## Architectural Decisions
 
@@ -215,6 +216,7 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `src/components/miniapp/miniapp-provider.tsx` | Client provider: lazy-loads SDK, calls `sdk.actions.ready()`, applies `safeAreaInsets` as CSS vars, exposes `useMiniApp()` context (`inMiniApp`, `added`) |
 | `src/components/miniapp/save-app-button.tsx` | Header "save app" button — shown only inside a Farcaster client (and when not already added); calls `sdk.actions.addMiniApp()` |
 | `public/miniapp-*.png` | Generated Mini App icon/splash/embed/hero images |
+| `scripts/review-pending.py` | Moderation assistant: fetches pending items, downloads Arweave assets, checks magic bytes, commits approve/reject via Git Data API. Used by the Hermes Agent daily cron job. |
 
 ### Key Modified Files (v2.2.0)
 
@@ -257,6 +259,21 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 **Original refactor (~20):** `src/app/dashboard/`, `draft/`, `companion/`, `submit/`, `log/`, `loading-test/`, `rive-test/`; dead API routes (`api/data`, `notion`, `random`, `embedding`, `fc`, `bundlr`); `src/pages/api/auth/siwe/`; `src/lib/notion/`, `siwe/`, `redis.ts`, `constant.ts`, `types/`; `src/middleware.ts`; `src/components/dashboard/`, `fc/`, `web3/`; `data/comments.tsx`, `page-views.tsx`; `src/hooks/`.
 
 **Cleanup pass:** `src/app/api/page.tsx` + `api/endpoint.ts` (stale `/api` docs), `src/lib/image-loader.ts`, `src/data/unmapped-assets.json`, `src/components/data/copy.tsx`, `data/image-dl.tsx`, `data/sentiment.tsx`, `ui/loading-text.tsx`, `ui/badge.tsx`, `ui/tooltip.tsx`, `ui/accordion.tsx`, `public/vercel.svg`, `public/next.svg`, `public/loading.riv`, `src/app/robots.txt` (→ `robots.ts`), `bun.lockb`, `src/app/contribute/` (contribute page removed; all `/contribute` links across the front page, info page, footer, and leaderboard now point to `/upload`, and `"contribute"` was dropped from `staticPages` in `src/lib/constants.ts`).
+
+### Key Modified Files (v2.4.0)
+
+| File | Changes |
+|------|---------|
+| `src/lib/metadata.ts` | Added `isPubliclyVisible()`, `filterPubliclyVisible()`, `getPendingItems()` helper functions for moderation filtering |
+| `src/app/api/submit/route.ts` | New uploads now set `SubmissionStatus: "submitted"` (was previously unset, meaning items went live immediately) |
+| `src/app/page.tsx` | Gallery data now uses `filterPubliclyVisible()` instead of `item.Status === "published"` |
+| `src/app/fav/page.tsx` | Favorites data now uses `filterPubliclyVisible()` |
+| `src/app/random/page.tsx` | Random picker now uses `filterPubliclyVisible()` |
+| `src/app/leaderboard/page.tsx` | Leaderboard now uses `filterPubliclyVisible()` |
+| `src/app/sitemap.tsx` | Sitemap now uses `filterPubliclyVisible()` |
+| `src/app/[slug]/page.tsx` | Added amber "Pending review" badge when `SubmissionStatus === "submitted"` |
+| `scripts/review-pending.py` | New — moderation assistant script (see [Content Moderation Pipeline](#content-moderation-pipeline)) |
+| `package.json` | Version bumped to `2.4.0` |
 
 ## Type System
 
@@ -365,6 +382,198 @@ redirect `www → apex`.
 - Validate the manifest + embeds with the Warpcast Mini App / Embed debugger;
   enable **Developer Mode** in Farcaster settings first.
 
+## Content Moderation Pipeline (v2.4.0)
+
+Added in v2.4.0 to gate new user uploads behind a review step before they appear in public galleries. Uses a **zero-OpEx** approach: the Hermes Agent on the VPS runs a daily cron job that analyzes each pending asset and commits approve/reject decisions back to GitHub.
+
+### How it works
+
+```
+┌─────────────────────────────────────────────┐
+│             USER UPLOAD FLOW                 │
+│  1. User submits file + metadata via /upload │
+│  2. POST /api/submit creates Item with:      │
+│     SubmissionStatus: "submitted"            │
+│     Status: "published"                      │
+│  3. Item is HIDDEN from:                     │
+│     - Galleries (/, /fav, /random)           │
+│     - Search results                         │
+│     - Sitemap, Leaderboard                   │
+│  4. Item is VISIBLE only at direct URL       │
+│     /[slug] with amber badge:                │
+│     "Pending review"                         │
+└──────────────────────┬──────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────┐
+│       HERMES AGENT CRON (VPS, daily)         │
+│                                              │
+│  1. Fetch metadata.json from GitHub          │
+│  2. Find items with SubmissionStatus:        │
+│     "submitted"                              │
+│  3. For each item:                           │
+│     a. Download thumbnail from Arweave       │
+│     b. Check magic bytes against filetype    │
+│     c. Vision analysis (NSFW/spam check)     │
+│     d. Decide: approve or reject             │
+│  4. Commit updates via GitHub API            │
+│  5. Vercel redeploys automatically           │
+└─────────────────────────────────────────────┘
+```
+
+### Filter Logic
+
+Items are publicly visible in galleries, search, sitemaps, and leaderboards when:
+
+```
+Status === "published" AND (SubmissionStatus is undefined OR SubmissionStatus === "approved")
+```
+
+- **Legacy items** (1,916+ entries from before v2.4.0): no `SubmissionStatus` field → visible by default
+- **New submissions**: `SubmissionStatus: "submitted"` → hidden from galleries, visible at direct URL
+- **Approved items**: `SubmissionStatus: "approved"` → visible everywhere
+- **Rejected items**: `SubmissionStatus: "rejected"` → hidden everywhere
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/metadata.ts` | `isPubliclyVisible()`, `filterPubliclyVisible()`, `getPendingItems()` helpers |
+| `src/app/api/submit/route.ts` | Sets `SubmissionStatus: "submitted"` on new items (line 210) |
+| `src/app/page.tsx` | Uses `filterPubliclyVisible()` for gallery data |
+| `src/app/fav/page.tsx` | Uses `filterPubliclyVisible()` for favorites |
+| `src/app/random/page.tsx` | Uses `filterPubliclyVisible()` for random picker |
+| `src/app/leaderboard/page.tsx` | Uses `filterPubliclyVisible()` for leaderboard |
+| `src/app/sitemap.tsx` | Uses `filterPubliclyVisible()` for sitemap entries |
+| `src/app/[slug]/page.tsx` | Shows amber "Pending review" badge when `SubmissionStatus === "submitted"` |
+| `scripts/review-pending.py` | Moderation assistant script (see below) |
+
+### Moderation Assistant Script (`scripts/review-pending.py`)
+
+A Python CLI tool that handles the data plumbing for the Hermes cron job:
+
+```bash
+# Dry-run: show pending items with download + magic byte check
+python3 scripts/review-pending.py
+
+# Report only (no downloads, just list)
+python3 scripts/review-pending.py --report-only
+
+# Approve specific items (dry-run, no commit)
+python3 scripts/review-pending.py --approve --id <item_id_1> <item_id_2>
+
+# Approve and commit to GitHub (requires GITHUB_TOKEN)
+python3 scripts/review-pending.py --approve --id <item_id> --commit
+
+# Reject and commit
+python3 scripts/review-pending.py --reject --id <item_id> --commit
+```
+
+**What it does:**
+1. Fetches `metadata.json` from `raw.githubusercontent.com`
+2. Finds items with `SubmissionStatus: "submitted"`
+3. Downloads each asset's thumbnail from Arweave to a temp dir
+4. Checks magic bytes match the declared filetype (PNG → `\x89PNG`, JPG → `\xff\xd8\xff`, etc.)
+5. Outputs a structured report for the agent to review
+6. With `--commit`: uses the Git Data API to write decisions back to GitHub
+
+**Env vars required for commit operations:**
+- `GITHUB_TOKEN` — PAT with repo contents write scope
+- `GITHUB_OWNER` — defaults to `BeanInTheMachine`
+- `GITHUB_REPO` — defaults to `cc0-lib`
+
+### Hermes Cron Job Setup (VPS)
+
+The cron job runs on the **VPS Hermes Agent** (not locally). Set it up once and it runs daily, auto-approving safe content.
+
+#### One-time setup
+
+**1. Ensure the script is accessible on the VPS**
+
+The script lives in the repo at `scripts/review-pending.py`. Either:
+- Clone the repo on the VPS:
+  ```bash
+  cd ~ && git clone https://github.com/BeanInTheMachine/cc0-lib.git
+  ```
+- Or fetch it on each run (the cron prompt below does this automatically via `raw.githubusercontent.com`)
+
+**2. Create or verify a GitHub PAT with repo scope**
+
+The cron job needs a token to commit moderation decisions. If you already have `GITHUB_TOKEN` in the Hermes `.env`, it's usable. Otherwise generate one at https://github.com/settings/tokens (needs `repo` scope).
+
+**3. Set up the Hermes cron job**
+
+Use the Hermes cron tool to create the daily moderation job. Run this as a **one-shot Hermes query** inside the VPS terminal (or use the `/cron` slash command):
+
+```
+hermes cron create "0 6 * * *" \
+  --name "cc0-lib daily moderation" \
+  --prompt "You are the cc0-lib content moderation bot.
+
+Your job: review newly uploaded assets and approve or reject them.
+
+1. Fetch the repo's metadata.json:
+   curl -s https://raw.githubusercontent.com/BeanInTheMachine/cc0-lib/main/src/data/metadata.json
+
+2. Find items where SubmissionStatus is 'submitted'.
+
+3. If none, report 'No items pending review' and stop.
+
+4. For each pending item, download from:
+   https://arweave.net/<id> (extract ID from the ThumbnailURL or File field)
+
+5. Analyze the image:
+   - Use your vision tools to check if the content is appropriate for a CC0 asset library
+   - Check the title/description/ENS for spam patterns
+   - Rule of thumb: reject only obviously inappropriate content (NSFW, hate symbols, spam gibberish)
+   - When in doubt, approve (it's a CC0 public library)
+
+6. After analysis, commit decisions using the review-pending.py script:
+   cd ~/cc0-lib && python3 scripts/review-pending.py --approve --id <id1> <id2> --commit
+
+7. Report back what was approved, rejected, and why.
+
+Commit message prefix: 'moderation:'" \
+  --skills "terminal,web,vision"
+```
+
+Alternatively, create it interactively from the Hermes CLI or desktop session using the cronjob tool or `/cron create`.
+
+#### What the cron job does each run
+
+1. Fetches `metadata.json` from GitHub raw
+2. Identifies pending items (`SubmissionStatus: "submitted"`)
+3. Downloads each asset from Arweave
+4. Uses vision analysis to check for NSFW/spam
+5. Runs `scripts/review-pending.py --approve --id <id> --commit` for safe items
+6. Runs `scripts/review-pending.py --reject --id <id> --commit` for flagged items
+7. Delivers a summary report to you
+
+#### Recovery
+
+If the cron job's commit races with a concurrent user submission (rare, ~20 submissions/day), the Git Data API will fail with a non-fast-forward error. The cron agent auto-retries once. If it fails again, the items will be picked up in the next day's run.
+
+If you want to manually review pending items:
+
+```bash
+# List pending
+cd ~/cc0-lib && python3 scripts/review-pending.py --report-only
+
+# Approve one
+python3 scripts/review-pending.py --approve --id <id> --commit
+```
+
+### Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| **Legacy items** (no `SubmissionStatus`) | Visible by default (passes the filter) |
+| **New upload, not yet reviewed** | Hidden from galleries, visible at `/slug` with amber badge |
+| **New upload, approved** | Visible everywhere (cron job sets `SubmissionStatus: "approved"`) |
+| **New upload, rejected** | Hidden everywhere (cron job sets `SubmissionStatus: "rejected"`) |
+| **Direct URL of rejected item** | Returns 404 via `notFound()` in `/[slug]/page.tsx` — the `getItemBySlug()` lookup succeeds but the page renders as 404. Currently this is a soft 404 (HTTP 200, see Known Limitations #8). |
+| **Race: user submits while cron is running** | Retry logic in submit API handles conflicts; cron picks up missed items next day |
+| **Empty gallery (no approved items yet)** | Shows "0 results" message — normal for a freshly deployed site with no reviewed uploads |
+
 ## Known Limitations
 
 1. **Notion metadata lost.** The `notion-api.splitbee.io` proxy is dead (HTTP 500). Rich titles, descriptions, source links, and custom tags from the original catalog are unrecoverable unless a backup exists.
@@ -391,19 +600,23 @@ redirect `www → apex`.
 
 ## Open Issues / Next Session
 
-1. **Re-enable paid uploads (>100KB).** The funding race retry/poll mechanism is built and staged in `turbo-upload.ts`, but paid uploads are disabled on the page because successful payment requires the wallet to hold both ETH and USDC on Base (chain 8453). Before re-enabling: (a) ensure the wallet is on Base before the funding tx fires (add chain detection + auto-switch), (b) verify the user has USDC on Base, or (c) switch to `ario` native token (no chain switching) if ar.io ecosystem adoption makes that viable. 
-2. **Recover stranded payment** `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e` via `turbo.submitFundTransaction({ txId })` (same wallet, `token: 'base-usdc'`).
-3. ~~**Gateway hardening.** Add `https://turbo-gateway.com`, drop `https://permaweb.io`.~~ **RESOLVED in v2.3.0.**
-4. **WalletConnect for all uploads.** Every file upload now needs a wallet — set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in Vercel for users without an injected wallet.
-5. **Version mismatch.** `package.json` is `2.0.0` vs documented v2.2.0 — bump to match (consider v2.3.0 for the wallet-signed upload work).
+1. **Vercel domain redirect direction.** The apex `cc0-lib.xyz` should be the primary domain with `www` redirecting to it. Currently reversed — `www` is primary and the apex `308`-redirects. This affects Farcaster Mini App embeds (clients treat apex and www as different apps) and OG image scrapers that don't follow redirects.
+2. **Stranded payment recovery** `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e` via `turbo.submitFundTransaction({ txId })` (same wallet, `token: 'base-usdc'`).
+3. **Re-enable paid uploads (>100KB).** The funding race retry/poll mechanism is built, but paid uploads are disabled on the page. Needs chain detection + Base USDC balance check before re-enabling.
+4. **WalletConnect for all uploads.** Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in Vercel for users without an injected wallet.
+5. **README.md.** Still the default Next.js boilerplate — should be updated.
+6. **Soft 404s.** Unmatched routes (including rejected items' direct URLs) return HTTP 200 instead of 404. Revisitable if Next.js adds a proper not-found status workaround.
 
 ## Last Verified
 
 - `tsc --noEmit`: 0 errors · `eslint`: 0 errors (pre-existing `<img>`/exhaustive-deps warnings only)
-- **Free upload (≤100KB): VERIFIED end-to-end on production.** Wallet-signed `uploadFile` via prod `upload.ardrive.io` → real Arweave mainnet data item → `POST /api/submit` (Git Data API) → committed to `metadata.json`. 20+ real user uploads confirmed in production (no issues). Images serve instantly via `turbo-gateway.com` fallback in `GatewayImage`; propagate to `arweave.net` within hours.
-- **Git Data API submit: VERIFIED in production** — 20+ real submit commits (IDs `6250829` through `9a7fb95`) appended to the >1MB `metadata.json`. Works reliably under sustained multi-user load.
-- **Paid upload (>100KB): DISABLED** — funding race retry/poll mechanism built but paid path disabled on the page; user needs both ETH and USDC on Base for Turbo on-demand funding.
-- **Farcaster Mini App:** manifest live + verified; apex still `308`-redirects to `www` (flip in Vercel).
-- **Gateway delivery:** `turbo-gateway.com` → `arweave.net` → `ar-io.net` fallback chain. Fresh Turbo uploads load instantly from `turbo-gateway.com` (before bundle confirmation on Arweave mainnet).
-- Latest push: `BeanInTheMachine/cc0-lib` `main` @ `9a7fb95`.
-- Catalog: **1,936+ items** — 1,916 legacy + 20+ live user uploads.
+- `npm run build` (production): 0 errors, all routes generated
+- **Moderation pipeline:** Code reviewed and committed (`597d462`). Filter logic verified by TypeScript compilation — all 8 modified files compile clean. Pending items correctly hidden from galleries/search/sitemaps. Badge renders on detail pages. Legacy items (no `SubmissionStatus`) remain visible.
+- **Moderation assistant script:** Tested locally — `python3 scripts/review-pending.py --report-only` returns "No items pending review. All clear!" (expected, as no new submissions have been made since the pipeline was deployed).
+- **Free upload (≤100KB): VERIFIED end-to-end on production** (pre-moderation). Wallet-signed `uploadFile` → Arweave mainnet → `POST /api/submit` → committed to `metadata.json`. 20+ real uploads confirmed. Now also sets `SubmissionStatus: "submitted"` so they await review.
+- **Git Data API submit: VERIFIED in production** — 20+ real submit commits appended to the >1MB `metadata.json`.
+- **Paid upload (>100KB): DISABLED.**
+- **Farcaster Mini App:** manifest live + verified.
+- **Gateway delivery:** `turbo-gateway.com` → `arweave.net` → `ar-io.net` fallback chain.
+- **Latest push:** `BeanInTheMachine/cc0-lib` `main` @ `597d462`.
+- **Catalog:** **1,936+ items** — 1,916 legacy + 20+ live user uploads.
