@@ -483,84 +483,80 @@ python3 scripts/review-pending.py --reject --id <item_id> --commit
 
 ### Hermes Cron Job Setup (VPS)
 
-The cron job runs on the **VPS Hermes Agent** (not locally). Set it up once and it runs daily, auto-approving safe content.
+The cron job runs on the **VPS Hermes Agent** (not locally). Set it up once and it runs daily, notifying you of pending uploads via Signal. You review the images on your phone and reply to approve/reject — Hermes handles the CLI moderation commands for you.
 
 #### One-time setup
 
 **1. Ensure the script is accessible on the VPS**
 
-The script lives in the repo at `scripts/review-pending.py`. Either:
-- Clone the repo on the VPS:
-  ```bash
-  cd ~ && git clone https://github.com/BeanInTheMachine/cc0-lib.git
-  ```
-- Or fetch it on each run (the cron prompt below does this automatically via `raw.githubusercontent.com`)
+The script lives in the repo at `scripts/review-pending.py`. Clone the repo:
+
+```bash
+cd ~ && git clone https://github.com/BeanInTheMachine/cc0-lib.git
+```
 
 **2. Create or verify a GitHub PAT with repo scope**
 
-The cron job needs a token to commit moderation decisions. If you already have `GITHUB_TOKEN` in the Hermes `.env`, it's usable. Otherwise generate one at https://github.com/settings/tokens (needs `repo` scope).
+The cron job and manual moderation both need a token to commit decisions. Add to Hermes `.env`:
+
+```
+GITHUB_TOKEN=github_pat_...
+GITHUB_OWNER=BeanInTheMachine
+GITHUB_REPO=cc0-lib
+```
+
+Generate at https://github.com/settings/tokens (needs `repo` scope, fine-grained with `Contents: read+write` for `BeanInTheMachine/cc0-lib` only).
 
 **3. Set up the Hermes cron job**
 
-Use the Hermes cron tool to create the daily moderation job. Run this as a **one-shot Hermes query** inside the VPS terminal (or use the `/cron` slash command):
+Created via the Hermes cronjob tool with the following config:
 
-```
-hermes cron create "0 6 * * *" \
-  --name "cc0-lib daily moderation" \
-  --prompt "You are the cc0-lib content moderation bot.
+| Field | Value |
+|-------|-------|
+| **Name** | `cc0-lib daily moderation` |
+| **Schedule** | `0 2 * * *` (02:00 UTC / 04:00 CEST — off-peak) |
+| **Skills** | `terminal` |
+| **Workdir** | `/home/cc0/cc0-lib` |
+| **Deliver** | `signal:+15752991281` |
 
-Your job: review newly uploaded assets and approve or reject them.
-
-1. Fetch the repo's metadata.json:
-   curl -s https://raw.githubusercontent.com/BeanInTheMachine/cc0-lib/main/src/data/metadata.json
-
-2. Find items where SubmissionStatus is 'submitted'.
-
-3. If none, report 'No items pending review' and stop.
-
-4. For each pending item, download from:
-   https://arweave.net/<id> (extract ID from the ThumbnailURL or File field)
-
-5. Analyze the image:
-   - Use your vision tools to check if the content is appropriate for a CC0 asset library
-   - Check the title/description/ENS for spam patterns
-   - Rule of thumb: reject only obviously inappropriate content (NSFW, hate symbols, spam gibberish)
-   - When in doubt, approve (it's a CC0 public library)
-
-6. After analysis, commit decisions using the review-pending.py script:
-   cd ~/cc0-lib && python3 scripts/review-pending.py --approve --id <id1> <id2> --commit
-
-7. Report back what was approved, rejected, and why.
-
-Commit message prefix: 'moderation:'" \
-  --skills "terminal,web,vision"
-```
-
-Alternatively, create it interactively from the Hermes CLI or desktop session using the cronjob tool or `/cron create`.
+**Cron prompt:** fetches `metadata.json` from GitHub raw, finds items with `SubmissionStatus: "submitted"`, and reports each one (title, type, filetype, ENS, Arweave URL, tags, description) via Signal. If none pending, reports "All clear!".
 
 #### What the cron job does each run
 
 1. Fetches `metadata.json` from GitHub raw
 2. Identifies pending items (`SubmissionStatus: "submitted"`)
-3. Downloads each asset from Arweave
-4. Uses vision analysis to check for NSFW/spam
-5. Runs `scripts/review-pending.py --approve --id <id> --commit` for safe items
-6. Runs `scripts/review-pending.py --reject --id <id> --commit` for flagged items
-7. Delivers a summary report to you
+3. Reports each item (title, type, Arweave URL, ENS, tags) via Signal
+4. Includes instructions for the user to reply to approve/reject
 
-#### Recovery
+#### Manual review flow (from phone)
 
-If the cron job's commit races with a concurrent user submission (rare, ~20 submissions/day), the Git Data API will fail with a non-fast-forward error. The cron agent auto-retries once. If it fails again, the items will be picked up in the next day's run.
+1. **4 AM** — cron sends pending-items report to your phone via Signal
+2. **Tap the Arweave links** right in Signal to preview each image
+3. **Reply directly to the message** — e.g. "approve first one, reject the weird Noun"
+4. **Hermes runs** the appropriate CLI commands and confirms back
 
-If you want to manually review pending items:
+No SSH, no app switching — all from the Signal thread.
+
+#### Moderation commands (Hermes runs these)
 
 ```bash
 # List pending
 cd ~/cc0-lib && python3 scripts/review-pending.py --report-only
 
-# Approve one
+# Approve one or more
 python3 scripts/review-pending.py --approve --id <id> --commit
+
+# Reject one or more
+python3 scripts/review-pending.py --reject --id <id> --commit
 ```
+
+#### Future: automated vision moderation
+
+The current workflow is manual (user reviews on phone, replies to approve/reject). In the future, a vision-capable model (e.g. via OpenRouter) can be swapped in to auto-approve safe content. When that's wired up:
+
+- Set a per-cron model override to a vision model (e.g. `meta-llama/llama-3.2-11b-vision-instruct` via OpenRouter)
+- Update the cron prompt to include vision analysis and auto-commit decisions
+- Cost: ~$0.05/100 images — fractions of a cent per daily run
 
 ### Edge Cases
 
