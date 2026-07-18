@@ -207,6 +207,7 @@ export async function POST(request: NextRequest) {
     ThumbnailURL: arweaveUrl,
     Source: source ?? "",
     Status: "published",
+    SubmissionStatus: "submitted",
     Tags: tags,
     ENS: ens ?? "",
     ID: 0,

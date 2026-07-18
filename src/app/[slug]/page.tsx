@@ -170,6 +170,11 @@ const DetailsPage = async ({ params }: DetailsPageProps) => {
             <span className="font-rubik text-3xl text-prim md:-ml-1 md:text-5xl">
               {data?.Title}
             </span>
+            {data.SubmissionStatus === "submitted" && (
+              <span className="inline-block w-fit rounded-sm bg-amber-600/20 px-3 py-1 font-chakra text-sm uppercase text-amber-400 ring-1 ring-amber-600/40">
+                Pending review
+              </span>
+            )}
             <span className="max-w-prose text-lg">{data?.Description}</span>
             <div className="place flex h-6 w-full flex-row justify-between gap-4 text-base lowercase sm:w-1/3 sm:text-lg">
               {data?.Source && (

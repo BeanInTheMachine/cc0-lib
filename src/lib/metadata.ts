@@ -71,6 +71,33 @@ export function slugify(text: string): string {
     .replace(/(^-|-$)+/g, "");
 }
 
+/**
+ * Check if an item should be visible in public galleries/search/sitemaps.
+ * Legacy items without SubmissionStatus are visible by default.
+ * New items need to be approved.
+ */
+export function isPubliclyVisible(item: Item): boolean {
+  if (item.Status !== "published") return false;
+  // Legacy items without SubmissionStatus are visible
+  if (!item.SubmissionStatus) return true;
+  // Items must be approved
+  return item.SubmissionStatus === "approved";
+}
+
+/**
+ * Filter to only publicly visible items.
+ */
+export function filterPubliclyVisible(items: Item[]): Item[] {
+  return items.filter(isPubliclyVisible);
+}
+
+/**
+ * Get items that are pending moderation review.
+ */
+export function getPendingItems(items: Item[]): Item[] {
+  return items.filter((item) => item.SubmissionStatus === "submitted");
+}
+
 export function shortDomainName(source: string): string {
   return source
     .replace("http://", "")

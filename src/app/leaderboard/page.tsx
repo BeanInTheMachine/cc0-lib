@@ -1,5 +1,5 @@
 import Container from "@/components/ui/container";
-import { readMetadata, getLeaderboard } from "@/lib/metadata";
+import { filterPubliclyVisible, readMetadata, getLeaderboard } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
 import { ScrollIcon, Send } from "lucide-react";
 import { Route } from "next";
@@ -36,7 +36,7 @@ export const generateMetadata = () => {
 };
 
 const LeaderboardPage = () => {
-  const data = readMetadata().filter((item) => item.Status === "published");
+  const data = filterPubliclyVisible(readMetadata());
   const { top10, top10Data } = getLeaderboard(data);
 
   return (

@@ -1,6 +1,6 @@
 import DownloadFile from "@/components/data/dl";
 import Container from "@/components/ui/container";
-import { readMetadata, slugify, getItemSlug } from "@/lib/metadata";
+import { filterPubliclyVisible, readMetadata, slugify, getItemSlug } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
 import { MoreHorizontal, RefreshCcw } from "lucide-react";
 import GatewayImage from "@/components/ui/gateway-image";
@@ -37,7 +37,7 @@ export const generateMetadata = () => {
 };
 
 const RandomPage = () => {
-  const data = readMetadata().filter((item) => item.Status === "published");
+  const data = filterPubliclyVisible(readMetadata());
   const randomItem = data[Math.floor(Math.random() * data.length)];
 
   if (!randomItem) {

@@ -1,4 +1,4 @@
-import { readMetadata } from "@/lib/metadata";
+import { filterPubliclyVisible, readMetadata } from "@/lib/metadata";
 import { getSiteUrl } from "@/lib/site-url";
 import { buildEmbed } from "@/lib/miniapp-embed";
 import FrontPage from "./front-page";
@@ -39,7 +39,7 @@ export const generateMetadata = () => {
 };
 
 export default function Home() {
-  const data = readMetadata().filter((item) => item.Status === "published");
+  const data = filterPubliclyVisible(readMetadata());
 
   return <FrontPage initialData={data} />;
 }
