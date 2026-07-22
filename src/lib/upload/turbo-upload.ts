@@ -1,10 +1,8 @@
-import { TurboFactory, OnDemandFunding } from "@ardrive/turbo-sdk/web";
+import { TurboFactory, X402Funding } from "@ardrive/turbo-sdk/web";
 import type {
   TurboUploadDataItemResponse,
   EthereumWalletAdapter,
-  TurboAuthenticatedClient,
 } from "@ardrive/turbo-sdk";
-
 export interface UploadMetadata {
   title: string;
   description: string;
@@ -67,7 +65,7 @@ export async function uploadFree(
 }
 
 async function pollForFundConfirmation(
-  turbo: TurboAuthenticatedClient,
+  turbo: import("@ardrive/turbo-sdk").TurboAuthenticatedClient,
   txId: string,
   onProgress?: UploadProgressCallback
 ): Promise<boolean> {
@@ -91,6 +89,42 @@ async function pollForFundConfirmation(
   return false;
 }
 
+/**
+ * Estimate the cost of uploading a file.
+ *
+ * NOTE: The Turbo payment API's /price/base-usdc endpoint returns 400, so we
+ * cannot use getTokenPriceForBytes(). Instead we use getFiatEstimateForBytes()
+ * which hits /price/bytes/{size} and /rates — both work fine. Since USDC is
+ * a stablecoin at ~1:1 with USD, we treat the USD estimate as the USDC amount.
+ */
+export async function estimateCost(fileSize: number): Promise<{
+  usdc: string;
+  usd: string;
+  winc: string;
+}> {
+  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
+
+  const fiatEstimate = await turbo.getFiatEstimateForBytes({
+    byteCount: fileSize,
+    currency: "usd",
+  });
+
+  return {
+    usdc: `$${fiatEstimate.amount.toFixed(2)}`,
+    usd: `$${fiatEstimate.amount.toFixed(2)}`,
+    winc: fiatEstimate.winc,
+  };
+}
+
+/**
+ * Upload a paid file (>100KB) to Arweave via the Turbo SDK.
+ *
+ * Uses X402Funding — the intended payment mechanism for `base-usdc`. The Turbo
+ * SDK lists `base-usdc` as x402-enabled (see x402EnabledTokens in upload.ts).
+ * X402 sends micro USDC payments atomically with the upload via the HTTP 402
+ * Payment Required protocol, avoiding the broken /price/base-usdc endpoint
+ * that OnDemandFunding depends on.
+ */
 export async function uploadPaid(
   file: File,
   metadata: UploadMetadata,
@@ -102,20 +136,21 @@ export async function uploadPaid(
     token: "base-usdc",
   });
 
-  onProgress?.({ phase: "funding", message: "Sending payment..." });
+  onProgress?.({ phase: "funding", message: "Signing and paying with USDC..." });
 
   try {
     return await turbo.uploadFile({
       fileStreamFactory: () => file.stream(),
       fileSizeFactory: () => file.size,
       dataItemOpts: { tags: buildTags(file, metadata) },
-      fundingMode: new OnDemandFunding({ topUpBufferMultiplier: 1.1 }),
+      fundingMode: new X402Funding({}),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     const match = msg.match(FUNDING_RACE_PATTERN);
     if (!match?.[1]) throw err;
 
+    // Stranded funding tx from a previous OnDemandFunding attempt
     const txId = match[1];
     persistStrandedTx(txId);
 
@@ -135,34 +170,6 @@ export async function uploadPaid(
       dataItemOpts: { tags: buildTags(file, metadata) },
     });
   }
-}
-
-export async function estimateCost(fileSize: number): Promise<{
-  usdc: string;
-  usd: string;
-  winc: string;
-}> {
-  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
-
-  const [tokenPrice, fiatEstimate] = await Promise.all([
-    turbo.getTokenPriceForBytes({ byteCount: fileSize }),
-    turbo.getFiatEstimateForBytes({
-      byteCount: fileSize,
-      currency: "usd",
-    }),
-  ]);
-
-  return {
-    usdc: formatTokenAmount(tokenPrice.tokenPrice, 6),
-    usd: fiatEstimate.amount.toFixed(2),
-    winc: fiatEstimate.winc,
-  };
-}
-
-function formatTokenAmount(value: string, decimals: number): string {
-  const num = parseFloat(value) / Math.pow(10, decimals);
-  if (num < 0.01) return "<$0.01";
-  return `$${num.toFixed(2)}`;
 }
 
 export function isFreeUpload(file: File): boolean {
