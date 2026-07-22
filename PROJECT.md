@@ -8,13 +8,13 @@ A public upload page (`/upload`) was added in v2.2.0, allowing users to upload f
 
 ## Current Status
 
-- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) temporarily disabled.
+- **Code:** Rebuilt, cleaned, and verified (`next build` green). Multiple UX hardening passes applied. Upload page live — free (≤100KB) wallet-signed uploads verified to Arweave mainnet; paid (>100KB) re-enabled with chain detection, USDC balance checks, and funding race recovery.
 - **Moderation pipeline:** Added in v2.4.0. New uploads start with `SubmissionStatus: "submitted"` and are hidden from galleries/search/sitemaps until reviewed. Legacy items (no `SubmissionStatus`) remain visible. The detail page shows an amber "Pending review" badge on unmoderated items. A Hermes Agent cron job (VPS-hosted) runs daily to auto-approve safe content via vision + magic-byte checks. See [Content Moderation Pipeline](#content-moderation-pipeline) below.
 - **Repo:** Pushed to **https://github.com/BeanInTheMachine/cc0-lib** (public, `main`). The original `cc0-lib/cc0-lib` is kept as the `upstream` remote.
 - **Hosting:** Vercel (Free Tier).
 - **Custom domain:** `cc0-lib.xyz` is the canonical domain (owned, live on Vercel). **Current Vercel config is reversed from intent:** `www.cc0-lib.xyz` is the primary domain (serves `200`) and the apex `cc0-lib.xyz` `308`-redirects to it. Fix: make the apex primary, redirect `www → apex`.
 - **Resurrected by:** coolbeans1r.eth (Farcaster FID `369904`)
-- **Version:** `2.4.0`.
+- **Version:** `2.5.0`.
 
 ## Architectural Decisions
 
@@ -135,7 +135,9 @@ them automatically added to the site catalog.
 | Tier | Max Size | Wallet Required | Cost | Status |
 |------|----------|-----------------|------|--------|
 | Free | ≤100KB | EIP-1193 (signature only) | $0 (no gas) | Live |
-| Paid | Unlimited | EIP-1193 (MetaMask, WalletConnect) | USDC on Base | Temporarily disabled |
+| Paid | Unlimited | EIP-1193 (MetaMask, WalletConnect) | USDC on Base | Live — auto-detects Base chain, checks USDC+ETH balance |
+
+**Chain requirements for paid:** Wallet must be on **Base (chain 8453)** with USDC for the upload fee + ~0.0005 ETH for gas. If on the wrong chain, a "Switch to Base" button prompts the wallet to switch. USDC and ETH balances are checked before enabling the submit button.
 
 ### Upload Flow
 
@@ -144,7 +146,7 @@ them automatically added to the site catalog.
 2. Connect wallet (required for all file uploads) → wrap EIP-1193 provider in an EthereumWalletAdapter
 3. Free (≤100KB): TurboFactory.authenticated({ walletAdapter, token: 'base-usdc' }).uploadFile()
      → user signs the data item (no cost, no gas) → Arweave mainnet tx ID
-4. Paid (>100KB): disabled — shows notice with links to external Arweave uploaders (ArDrive, ar.io Turbo, Akord) + "Switch to Paste ID" button
+4. Paid (>100KB): wallet signs USDC payment via OnDemandFunding on Base, funding race auto-retry with polling, upload to Arweave
 5. POST /api/submit → Git Data API commit to metadata.json → Vercel redeploys
 6. Success page: primary "View image" link (turbo-gateway.com — instant) + secondary "View on site" link with "may take a few hours to appear" note
 ```
@@ -274,6 +276,19 @@ Both paths wrap the EIP-1193 provider with ethers `BrowserProvider` and pass an 
 | `src/app/[slug]/page.tsx` | Added amber "Pending review" badge when `SubmissionStatus === "submitted"` |
 | `scripts/review-pending.py` | New — moderation assistant script (see [Content Moderation Pipeline](#content-moderation-pipeline)) |
 | `package.json` | Version bumped to `2.4.0` |
+
+### Key New Files (v2.5.0)
+
+| File | Purpose |
+|------|---------|
+| `src/lib/upload/chain-utils.ts` | Chain detection (`isOnBaseChain`, `switchToBaseChain`), USDC balance check via ERC-20 contract call, ETH gas check, `watchChainChanges` for injected wallet chain-switch events |
+
+### Key Modified Files (v2.5.0)
+
+| File | Changes |
+|------|---------|
+| `src/app/upload/upload-page.tsx` | **Paid uploads re-enabled.** Replaced the "temporarily unavailable" notice with a full upload flow: wallet connect, chain detection (Base 8453), auto-switch prompt ("Switch to Base" button when on wrong chain), USDC + ETH balance checks, cost estimate display, and conditional submit button (only when wallet is connected, on Base, and has sufficient USDC/ETH). Added 3 new `useState` vars (`chainId`, `checkingChain`, `balances`), a chain-watch effect, a balance-check effect, and a `handleChainSwitch` handler. |
+| `package.json` | Version bumped to `2.5.0` |
 
 ## Type System
 
@@ -586,7 +601,7 @@ The current workflow is manual (user reviews on phone, replies to approve/reject
 12. **Turbo-to-Arweave propagation delay.** Turbo uploads are data items served instantly via `turbo-gateway.com` but take hours to propagate to standard Arweave gateways (`arweave.net`) because Turbo batches data items into on-chain transactions periodically. The success page links to `turbo-gateway.com` (instant) and warns "may take a few hours to appear" on the site. `GatewayImage` uses `turbo-gateway.com` as a fallback so images load during the propagation window.
 13. **Webpack-only build.** Next.js 16 defaults to Turbopack, but the `node:` scheme polyfills required by the Turbo SDK only work with webpack. `dev` and `build` scripts use `--webpack`. No runtime performance difference — output JS/CSS is identical.
 
-14. **Paid uploads (>100KB) — temporarily disabled (money-sensitive).** With `OnDemandFunding`, Turbo broadcasts the USDC-on-Base funding tx, then calls `submitFundTransaction` (`POST /account/balance/base-usdc`) to credit it. That credit call can fail before the tx is confirmed/visible on Base, throwing `Failed to submit fund transaction! ... 'turbo.submitFundTransaction(id)': <txId>` (`@ardrive/turbo-sdk .../payment.js:328`) and aborting the upload — **before** the SDK's own retry loop (`upload.js:664`) runs. The on-chain USDC payment succeeds but is never credited; funds are recoverable (not lost) via `turbo.submitFundTransaction({ txId })` once the tx confirms (credits land on the wallet's Turbo balance). **A retry/poll mechanism is built** (`pollForFundConfirmation` + `resumeFunding` in `turbo-upload.ts`): catches the funding race error, extracts the tx ID, polls every 3s for up to 120s, then retries `uploadFile` without `OnDemandFunding` (balance already credited — no double-charge). Stranded txs are persisted to localStorage with a "Resume" banner on the upload page. **However, paid uploads are disabled entirely on the page** because successful payment requires the wallet to hold both ETH and USDC on Base (chain 8453) — the current wallet setup doesn't guarantee this. The large-file path now shows external uploader links + "Switch to Paste ID". Stranded test payment: Base tx `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e`.
+14. **Paid uploads (>100KB) — RESOLVED in v2.5.0.** Paid uploads re-enabled with chain detection (`isOnBaseChain`), Base chain auto-switch, USDC balance check (ERC-20 contract call via ethers), and ETH gas check. The funding race retry/poll mechanism (`pollForFundConfirmation` + `resumeFunding`) handles the race between on-chain USDC tx confirmation and Turbo's credit call. The submit button is only enabled when the wallet is on Base (8453) with sufficient USDC + ETH. See [Upload Page](#upload-page) for the full flow.
 15. **Fresh-upload gateway propagation — RESOLVED in v2.3.0.** `turbo-gateway.com` added to `ARWEAVE_GATEWAYS` (serves Turbo data items instantly, before bundle confirmation on Arweave mainnet). `permaweb.io` removed (was returning 200 OK with an HTML 404 stub, which blocked `<img>` `onError` from triggering and caused broken images instead of the fallback card). New uploads now load in the gallery immediately via `turbo-gateway.com` while standard Arweave gateways index the bundle transaction.
 
 ## Dependency Summary
@@ -598,7 +613,7 @@ The current workflow is manual (user reviews on phone, replies to approve/reject
 
 1. **Vercel domain redirect direction.** The apex `cc0-lib.xyz` should be the primary domain with `www` redirecting to it. Currently reversed — `www` is primary and the apex `308`-redirects. This affects Farcaster Mini App embeds (clients treat apex and www as different apps) and OG image scrapers that don't follow redirects.
 2. **Stranded payment recovery** `0x7132978a183efa24b79d8d9e70fa0736b2fd55a28b3794a28e30d24ef93d0c9e` via `turbo.submitFundTransaction({ txId })` (same wallet, `token: 'base-usdc'`).
-3. **Re-enable paid uploads (>100KB).** The funding race retry/poll mechanism is built, but paid uploads are disabled on the page. Needs chain detection + Base USDC balance check before re-enabling.
+3. **Paid uploads (>100KB) — RESOLVED in v2.5.0.** Chain detection, Base switch, USDC/ETH balance checks all implemented. See [Known Limitations #14](#14-paid-uploads-100kb-resolved-in-v250) for details.
 4. **WalletConnect for all uploads.** Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in Vercel for users without an injected wallet.
 5. **README.md.** Still the default Next.js boilerplate — should be updated.
 6. **Soft 404s.** Unmatched routes (including rejected items' direct URLs) return HTTP 200 instead of 404. Revisitable if Next.js adds a proper not-found status workaround.
@@ -611,7 +626,7 @@ The current workflow is manual (user reviews on phone, replies to approve/reject
 - **Moderation assistant script:** Tested locally — `python3 scripts/review-pending.py --report-only` returns "No items pending review. All clear!" (expected, as no new submissions have been made since the pipeline was deployed).
 - **Free upload (≤100KB): VERIFIED end-to-end on production** (pre-moderation). Wallet-signed `uploadFile` → Arweave mainnet → `POST /api/submit` → committed to `metadata.json`. 20+ real uploads confirmed. Now also sets `SubmissionStatus: "submitted"` so they await review.
 - **Git Data API submit: VERIFIED in production** — 20+ real submit commits appended to the >1MB `metadata.json`.
-- **Paid upload (>100KB): DISABLED.**
+- **Paid upload (>100KB): RE-ENABLED.** Chain detection (`isOnBaseChain`, `switchToBaseChain`), USDC balance check, and ETH gas check implemented in `chain-utils.ts`. Upload page shows wallet connect → chain switch → balance check → submit flow for files >100KB. Funding race recovery via `pollForFundConfirmation` + `resumeFunding`. Build check deferred to Vercel deploy (deps not installed locally).
 - **Farcaster Mini App:** manifest live + verified.
 - **Gateway delivery:** `turbo-gateway.com` → `arweave.net` → `ar-io.net` fallback chain.
 - **Latest push:** `BeanInTheMachine/cc0-lib` `main` @ `597d462`.
