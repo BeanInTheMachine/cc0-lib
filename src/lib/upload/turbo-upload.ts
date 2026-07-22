@@ -1,4 +1,4 @@
-import { TurboFactory } from "@ardrive/turbo-sdk/web";
+import { TurboFactory, OnDemandFunding } from "@ardrive/turbo-sdk/web";
 import type {
   TurboUploadDataItemResponse,
   EthereumWalletAdapter,
@@ -27,6 +27,7 @@ export interface StrandedFundingTx {
 }
 
 const FREE_UPLOAD_LIMIT = 100 * 1024;
+const FUNDING_RACE_PATTERN = /Failed to submit fund transaction.*'turbo\.submitFundTransaction\(id\)':\s*(\S+)/;
 const FUND_POLL_INTERVAL = 3000;
 const FUND_POLL_TIMEOUT = 120_000;
 const STRANDED_TX_KEY = "cc0-lib-stranded-funding-tx";
@@ -117,16 +118,15 @@ export async function estimateCost(fileSize: number): Promise<{
 /**
  * Upload a paid file (>100KB) to Arweave.
  *
- * Since the Turbo payment API doesn't support /price/base-usdc (returns 400),
- * we cannot use OnDemandFunding or X402Funding (both rely on that endpoint
- * internally or on x402-fetch which has signing-compatibility issues).
+ * NOTE: Turbo's API does NOT support the `base-usdc` token — all endpoints
+ * (price, balance, info) return errors for it. The only supported token
+ * on Base is `base-eth`, which the user pays with for both gas and upload.
  *
- * Instead we manually:
- * 1. Calculate the USDC cost from fiat pricing (working endpoints)
- * 2. Check the user's existing Turbo balance
- * 3. If insufficient, send USDC directly to Turbo's Base wallet via ethers
- * 4. Submit the tx to Turbo to credit the balance
- * 5. Upload using ExistingBalanceFunding (the default)
+ * We use OnDemandFunding with `base-eth`, which the SDK fully supports:
+ * - /price/base-eth works
+ * - /account/balance/base-eth works
+ * - /info returns a base-eth wallet address
+ * - Enabled for on-demand funding
  */
 export async function uploadPaid(
   file: File,
@@ -136,81 +136,43 @@ export async function uploadPaid(
 ): Promise<TurboUploadDataItemResponse> {
   const turbo = TurboFactory.authenticated({
     walletAdapter,
-    token: "base-usdc",
+    token: "base-eth",
   });
 
-  // Step 1: Check existing Turbo balance
-  onProgress?.({ phase: "funding", message: "Checking Turbo credit balance..." });
-  const balance = await turbo.getBalance();
-  const fileSizeWinc = await getWincCost(file.size);
+  onProgress?.({ phase: "funding", message: "Sending payment with ETH on Base..." });
 
-  // If sufficient balance exists, upload directly
-  if (BigInt(balance.effectiveBalance) >= BigInt(fileSizeWinc)) {
+  try {
+    // OnDemandFunding calculates cost, asks user to pay, credits Turbo, uploads
+    return await turbo.uploadFile({
+      fileStreamFactory: () => file.stream(),
+      fileSizeFactory: () => file.size,
+      dataItemOpts: { tags: buildTags(file, metadata) },
+      fundingMode: new OnDemandFunding({ topUpBufferMultiplier: 1.1 }),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    const match = msg.match(FUNDING_RACE_PATTERN);
+    if (!match?.[1]) throw err;
+
+    const txId = match[1];
+    persistStrandedTx(txId);
+
+    const confirmed = await pollForFundConfirmation(turbo, txId, onProgress);
+    if (!confirmed) {
+      throw new Error(
+        `Payment sent but confirmation timed out. Your ETH was sent (tx ${txId}). The funds are recoverable — refresh the page and click "Resume" to retry.`
+      );
+    }
+
+    clearStrandedTx();
     onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
+
     return turbo.uploadFile({
       fileStreamFactory: () => file.stream(),
       fileSizeFactory: () => file.size,
       dataItemOpts: { tags: buildTags(file, metadata) },
     });
   }
-
-  // Step 2: Calculate how much USDC to send (with 10% buffer)
-  const topUpWinc = BigInt(
-    Math.ceil(Number(fileSizeWinc) * 1.1 - Number(balance.effectiveBalance))
-  );
-  const usdcAmount = await wincToUSD(topUpWinc);
-
-  onProgress?.({
-    phase: "funding",
-    message: `Sending ~$${usdcAmount} USDC to fund upload...`,
-  });
-
-  // Step 3: Get Turbo's Base USDC wallet address
-  const wallets = await turbo.getTurboCryptoWallets();
-  // The /info endpoint doesn't list a base-usdc address, but ethereum
-  // and base-eth both point to the same wallet (0x6A0A10FF...), which
-  // receives USDC on any EVM chain. Fall back to ethereum address.
-  const turboAddress = wallets["base-usdc"] || wallets["ethereum"];
-  if (!turboAddress) {
-    throw new Error(
-      "Could not find Turbo wallet address. Please try again later or upload via ArDrive (https://app.ardrive.io)."
-    );
-  }
-
-  // Step 4: Send USDC to Turbo's wallet via ethers
-  const signer = await walletAdapter.getSigner();
-  const { ethers } = await import("ethers");
-
-  const usdcContract = new ethers.Contract(
-    USDC_CONTRACT_BASE,
-    ["function transfer(address to, uint256 amount) returns (bool)"],
-    signer
-  );
-
-  const usdcAmountWei = ethers.parseUnits(usdcAmount, 6);
-  const tx = await usdcContract.transfer(turboAddress, usdcAmountWei);
-  const txId = tx.hash;
-
-  onProgress?.({ phase: "confirming", message: "Waiting for payment to confirm on Base..." });
-
-  // Step 5: Submit the transaction to Turbo to credit the balance
-  persistStrandedTx(txId);
-  const confirmed = await pollForFundConfirmation(turbo, txId, onProgress);
-  if (!confirmed) {
-    throw new Error(
-      `Payment sent but confirmation timed out. Your USDC was sent (tx ${txId}). The funds are recoverable — refresh the page and click "Resume" to retry.`
-    );
-  }
-
-  clearStrandedTx();
-
-  // Step 6: Upload with existing balance
-  onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
-  return turbo.uploadFile({
-    fileStreamFactory: () => file.stream(),
-    fileSizeFactory: () => file.size,
-    dataItemOpts: { tags: buildTags(file, metadata) },
-  });
 }
 
 export function isFreeUpload(file: File): boolean {
