@@ -1,8 +1,10 @@
-import { TurboFactory } from "@ardrive/turbo-sdk/web";
+import { TurboFactory, OnDemandFunding } from "@ardrive/turbo-sdk/web";
 import type {
   TurboUploadDataItemResponse,
   EthereumWalletAdapter,
+  TurboAuthenticatedClient,
 } from "@ardrive/turbo-sdk";
+
 export interface UploadMetadata {
   title: string;
   description: string;
@@ -27,6 +29,7 @@ export interface StrandedFundingTx {
 }
 
 const FREE_UPLOAD_LIMIT = 100 * 1024;
+const FUNDING_RACE_PATTERN = /Failed to submit fund transaction.*'turbo\.submitFundTransaction\(id\)':\s*(\S+)/;
 const FUND_POLL_INTERVAL = 3000;
 const FUND_POLL_TIMEOUT = 120_000;
 const STRANDED_TX_KEY = "cc0-lib-stranded-funding-tx";
@@ -63,44 +66,31 @@ export async function uploadFree(
   });
 }
 
-/**
- * Estimate cost using fiat pricing (the /price/base-usdc endpoint is broken).
- * USDC ≈ USD (stablecoin), so we use fiat estimate directly.
- */
-export async function estimateCost(fileSize: number): Promise<{
-  usdc: string;
-  usd: string;
-  winc: string;
-}> {
-  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
+async function pollForFundConfirmation(
+  turbo: TurboAuthenticatedClient,
+  txId: string,
+  onProgress?: UploadProgressCallback
+): Promise<boolean> {
+  const start = Date.now();
+  onProgress?.({ phase: "confirming", message: "Waiting for payment to confirm on Base..." });
 
-  const fiatEstimate = await turbo.getFiatEstimateForBytes({
-    byteCount: fileSize,
-    currency: "usd",
-  });
-
-  return {
-    usdc: `$${fiatEstimate.amount.toFixed(2)}`,
-    usd: `$${fiatEstimate.amount.toFixed(2)}`,
-    winc: fiatEstimate.winc,
-  };
+  while (Date.now() - start < FUND_POLL_TIMEOUT) {
+    try {
+      const result = await turbo.submitFundTransaction({ txId });
+      if (result.status === "confirmed") {
+        return true;
+      }
+      if (result.status === "failed") {
+        return false;
+      }
+    } catch {
+      // network error — keep polling
+    }
+    await new Promise((r) => setTimeout(r, FUND_POLL_INTERVAL));
+  }
+  return false;
 }
 
-/**
- * Upload a paid file (>100KB) to Arweave.
- *
- * Turbo's API does NOT support `base-usdc` at all. For `base-eth`,
- * OnDemandFunding relies on the SDK's internal funding pipeline which
- * has timing issues with transaction confirmation + submitFundTransaction.
- *
- * Instead we do a fully manual flow:
- * 1. Calculate WINC cost from /price/bytes (works)
- * 2. Convert WINC to approximate ETH using /rates (works)
- * 3. Get Turbo's base-eth wallet address from /info (works)
- * 4. Send ETH directly to that address via ethers (user approves in MetaMask)
- * 5. Poll submitFundTransaction until Turbo credits the balance
- * 6. Upload with ExistingBalanceFunding
- */
 export async function uploadPaid(
   file: File,
   metadata: UploadMetadata,
@@ -109,121 +99,74 @@ export async function uploadPaid(
 ): Promise<TurboUploadDataItemResponse> {
   const turbo = TurboFactory.authenticated({
     walletAdapter,
-    token: "base-eth",
+    token: "base-usdc",
   });
 
-  // Step 1: Check existing Turbo balance
-  onProgress?.({ phase: "funding", message: "Checking Turbo credit balance..." });
-  const balance = await turbo.getBalance();
-  const wincCost = await getWincCost(file.size);
+  onProgress?.({ phase: "funding", message: "Sending payment..." });
 
-  // If sufficient balance exists, upload directly
-  if (BigInt(balance.effectiveBalance) >= BigInt(wincCost)) {
+  try {
+    return await turbo.uploadFile({
+      fileStreamFactory: () => file.stream(),
+      fileSizeFactory: () => file.size,
+      dataItemOpts: { tags: buildTags(file, metadata) },
+      fundingMode: new OnDemandFunding({ topUpBufferMultiplier: 1.1 }),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    const match = msg.match(FUNDING_RACE_PATTERN);
+    if (!match?.[1]) throw err;
+
+    const txId = match[1];
+    persistStrandedTx(txId);
+
+    const confirmed = await pollForFundConfirmation(turbo, txId, onProgress);
+    if (!confirmed) {
+      throw new Error(
+        `Payment sent but confirmation timed out. Your USDC was sent (tx ${txId}). The funds are recoverable — refresh the page and click "Resume" to retry, or manually call turbo.submitFundTransaction({ txId: "${txId}" }) once the tx confirms on Base.`
+      );
+    }
+
+    clearStrandedTx();
     onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
+
     return turbo.uploadFile({
       fileStreamFactory: () => file.stream(),
       fileSizeFactory: () => file.size,
       dataItemOpts: { tags: buildTags(file, metadata) },
     });
   }
+}
 
-  // Step 2: Calculate how much ETH to send (with 10% buffer)
-  const topUpWinc = BigInt(
-    Math.ceil(Number(wincCost) * 1.1 - Number(balance.effectiveBalance))
-  );
-  const ethAmount = await wincToETH(topUpWinc);
+export async function estimateCost(fileSize: number): Promise<{
+  usdc: string;
+  usd: string;
+  winc: string;
+}> {
+  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
 
-  onProgress?.({
-    phase: "funding",
-    message: `Sending ~${ethAmount} ETH to fund upload...`,
-  });
+  const [tokenPrice, fiatEstimate] = await Promise.all([
+    turbo.getTokenPriceForBytes({ byteCount: fileSize }),
+    turbo.getFiatEstimateForBytes({
+      byteCount: fileSize,
+      currency: "usd",
+    }),
+  ]);
 
-  // Step 3: Get Turbo's base-eth wallet address
-  const wallets = await turbo.getTurboCryptoWallets();
-  const turboAddress = wallets["base-eth"];
-  if (!turboAddress) {
-    throw new Error(
-      "Could not find Turbo wallet address. Please try again later or upload via ArDrive (https://app.ardrive.io)."
-    );
-  }
+  return {
+    usdc: formatTokenAmount(tokenPrice.tokenPrice, 6),
+    usd: fiatEstimate.amount.toFixed(2),
+    winc: fiatEstimate.winc,
+  };
+}
 
-  // Step 4: Send ETH directly to Turbo's wallet via ethers
-  const signer = await walletAdapter.getSigner();
-  const { ethers } = await import("ethers");
-  const tx = await signer.sendTransaction({
-    to: turboAddress,
-    value: ethers.parseEther(ethAmount),
-  });
-  const txId = tx.hash;
-
-  onProgress?.({ phase: "confirming", message: "Waiting for payment to confirm on Base..." });
-
-  // Step 5: Poll submitFundTransaction until Turbo credits the balance
-  persistStrandedTx(txId);
-  const start = Date.now();
-  let confirmed = false;
-  while (Date.now() - start < FUND_POLL_TIMEOUT) {
-    try {
-      const result = await turbo.submitFundTransaction({ txId });
-      if (result.status === "confirmed") {
-        confirmed = true;
-        break;
-      }
-      if (result.status === "failed") {
-        break;
-      }
-    } catch {
-      // network error / API not ready — keep polling
-    }
-    await new Promise((r) => setTimeout(r, FUND_POLL_INTERVAL));
-  }
-
-  if (!confirmed) {
-    throw new Error(
-      `Payment sent but Turbo has not credited the balance yet. Your ETH was sent (tx ${txId}). Refresh the page and click "Resume" to retry, or try again later — the funds are not lost.`
-    );
-  }
-
-  clearStrandedTx();
-
-  // Step 6: Upload with existing balance
-  onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
-  return turbo.uploadFile({
-    fileStreamFactory: () => file.stream(),
-    fileSizeFactory: () => file.size,
-    dataItemOpts: { tags: buildTags(file, metadata) },
-  });
+function formatTokenAmount(value: string, decimals: number): string {
+  const num = parseFloat(value) / Math.pow(10, decimals);
+  if (num < 0.01) return "<$0.01";
+  return `$${num.toFixed(2)}`;
 }
 
 export function isFreeUpload(file: File): boolean {
   return file.size <= FREE_UPLOAD_LIMIT;
-}
-
-/**
- * Get the WINC cost for a given byte count (uses the working /price/bytes endpoint).
- */
-async function getWincCost(byteCount: number): Promise<string> {
-  const turbo = TurboFactory.unauthenticated({ token: "base-eth" });
-  const costs = await turbo.getUploadCosts({ bytes: [byteCount] });
-  return costs[0].winc;
-}
-
-/**
- * Convert a WINC amount to an ETH amount string using the /price/base-eth endpoint.
- */
-async function wincToETH(winc: bigint): Promise<string> {
-  const turbo = TurboFactory.unauthenticated({ token: "base-eth" });
-
-  // Get the WINC cost for 1 ETH (= 1 base-eth token amount in wei = 10^18)
-  const oneEthWinc = await turbo.getWincForToken({
-    tokenAmount: "1000000000000000000",
-  });
-
-  // Get the WINC cost for the given bytes
-  const ethAmount =
-    Number(winc) / Number(oneEthWinc.winc);
-  // Round up to avoid underpayment (6 significant digits for small amounts)
-  return (Math.ceil(ethAmount * 1_000_000) / 1_000_000).toFixed(6);
 }
 
 function persistStrandedTx(txId: string) {

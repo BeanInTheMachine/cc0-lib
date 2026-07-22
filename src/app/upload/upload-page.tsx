@@ -14,14 +14,6 @@ import {
 } from "@/lib/upload/turbo-upload";
 import type { UploadMetadata, StrandedFundingTx } from "@/lib/upload/turbo-upload";
 import type { TurboUploadDataItemResponse } from "@ardrive/turbo-sdk";
-import {
-  isOnBaseChain,
-  switchToBaseChain,
-  getWalletBalances,
-  watchChainChanges,
-  BASE_CHAIN_ID,
-} from "@/lib/upload/chain-utils";
-import type { WalletBalances } from "@/lib/upload/chain-utils";
 import { cn } from "@/lib/utils";
 import {
   UploadCloud,
@@ -60,9 +52,6 @@ export default function UploadPage() {
   const [recovering, setRecovering] = useState(false);
   const [recoveryResult, setRecoveryResult] = useState<string | null>(null);
   const [fundingMessage, setFundingMessage] = useState("");
-  const [chainId, setChainId] = useState<number | null>(null);
-  const [checkingChain, setCheckingChain] = useState(false);
-  const [balances, setBalances] = useState<WalletBalances | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -81,52 +70,6 @@ export default function UploadPage() {
   useEffect(() => {
     setStrandedTx(getStrandedFundingTx());
   }, []);
-
-  // Watch for chain changes (injected wallet)
-  useEffect(() => {
-    const unsub = watchChainChanges((newChainId) => {
-      setChainId(newChainId);
-      setBalances(null); // balances invalidated on chain change
-    });
-    return unsub;
-  }, []);
-
-  // Check chain + balances when wallet connects with a paid file
-  useEffect(() => {
-    if (!needsPayment || !walletAddress) {
-      setBalances(null);
-      return;
-    }
-    const check = async () => {
-      setCheckingChain(true);
-      try {
-        const { BrowserProvider } = await import("ethers");
-        const hasInjected = typeof window !== "undefined" && !!window.ethereum;
-        if (!hasInjected) {
-          setCheckingChain(false);
-          return;
-        }
-        const provider = new BrowserProvider(window.ethereum!);
-        const currentChainId = await isOnBaseChain(provider)
-          .then(() => BASE_CHAIN_ID)
-          .catch(async () => {
-            const net = await provider.getNetwork();
-            return Number(net.chainId);
-          });
-        setChainId(currentChainId);
-        if (currentChainId === BASE_CHAIN_ID && costEstimate) {
-          const signer = await provider.getSigner();
-          const bals = await getWalletBalances(signer, walletAddress, costEstimate.usdc);
-          setBalances(bals);
-        }
-      } catch {
-        // provider not available
-      } finally {
-        setCheckingChain(false);
-      }
-    };
-    check();
-  }, [needsPayment, walletAddress, costEstimate]);
 
   const handleFileDrop = useCallback((fileList: FileList | null) => {
     const f = fileList?.[0];
@@ -209,19 +152,6 @@ export default function UploadPage() {
       return signer;
     } finally {
       setConnecting(false);
-    }
-  }, []);
-
-  const handleChainSwitch = useCallback(async () => {
-    try {
-      await switchToBaseChain();
-      setChainId(BASE_CHAIN_ID);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to switch chain. Please switch to Base manually in your wallet."
-      );
     }
   }, []);
 
@@ -641,84 +571,24 @@ export default function UploadPage() {
             )}
 
             {file && !isFreeUpload(file) && (
-              <div className="rounded-xl bg-zinc-800/50 p-4">
-                <p className="font-rubik text-sm text-prim">Paid upload — ETH on Base</p>
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <p className="font-rubik text-sm text-amber-300">Paid uploads temporarily unavailable</p>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Files over {formatSize(FREE_UPLOAD_LIMIT)} cost{' '}
-                  <span className="text-prim">{costEstimate?.usdc ?? "estimating..."}</span>{' '}
-                  to store permanently on Arweave. Your wallet needs ETH on Base (chain 8453) for both gas and the upload fee.
+                  Files over {formatSize(FREE_UPLOAD_LIMIT)} cannot be uploaded directly right now.
+                  Upload your file using an external Arweave service, then paste the transaction ID below.
                 </p>
-
-                {!walletAddress && (
-                  <div className="mt-3 flex gap-2">
-                    {typeof window !== "undefined" && window.ethereum && (
-                      <button
-                        onClick={connectInjected}
-                        disabled={connecting}
-                        className="flex items-center gap-2 rounded-lg bg-prim px-4 py-2 font-rubik text-sm text-zinc-900 hover:bg-sec transition-colors disabled:opacity-50"
-                      >
-                        <Wallet className="h-4 w-4" />
-                        {connecting ? "Connecting..." : "Connect wallet"}
-                      </button>
-                    )}
-                    <button
-                      onClick={connectWalletConnect}
-                      disabled={connecting}
-                      className="flex items-center gap-2 rounded-lg bg-zinc-700 px-4 py-2 font-rubik text-sm text-white hover:bg-zinc-600 transition-colors disabled:opacity-50"
-                    >
-                      <Wallet className="h-4 w-4" />
-                      {connecting ? "Connecting..." : "WalletConnect"}
-                    </button>
-                  </div>
-                )}
-
-                {walletAddress && chainId !== BASE_CHAIN_ID && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    <p className="text-xs text-amber-400">
-                      Wrong network. Please switch to Base (chain 8453) to upload.
-                    </p>
-                    <button
-                      onClick={handleChainSwitch}
-                      className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 font-rubik text-sm text-zinc-900 hover:bg-amber-400 transition-colors w-fit"
-                    >
-                      Switch to Base
-                    </button>
-                  </div>
-                )}
-
-                {walletAddress && chainId === BASE_CHAIN_ID && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    <p className="text-xs text-green-400">
-                      Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)} ✓ Base
-                    </p>
-                    {checkingChain ? (
-                      <p className="text-xs text-zinc-500">Checking balances...</p>
-                    ) : balances ? (
-                      <div className="flex flex-wrap gap-4 text-xs">
-                        <span className={balances.hasSufficientUsdc ? "text-green-400" : "text-red-400"}>
-                          ETH: {balances.ethFormatted} {!balances.hasSufficientEth && "(low — need more ETH for gas + upload fee)"}
-                        </span>
-                        <span className="text-prim">
-                          Est. cost: {costEstimate?.usdc ?? balances.estimatedCostUsdc}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-zinc-500">Or upload via:</span>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   <a href="https://app.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ArDrive</a>
                   <a href="https://turbo.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ar.io Turbo</a>
                   <a href="https://akord.com" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">Akord</a>
-                  <button
-                    onClick={() => setMode("paste")}
-                    className="flex items-center gap-1 rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors"
-                  >
-                    <Clipboard className="h-3 w-3" />
-                    Paste ID
-                  </button>
                 </div>
+                <button
+                  onClick={() => setMode("paste")}
+                  className="mt-3 flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 font-rubik text-xs text-zinc-900 hover:bg-amber-400 transition-colors"
+                >
+                  <Clipboard className="h-3 w-3" />
+                  Switch to Paste ID
+                </button>
               </div>
             )}
           </>
@@ -787,21 +657,11 @@ export default function UploadPage() {
         )}
 
         {/* Submit button */}
-        {((mode === "file" && file && (!needsPayment || (walletAddress && chainId === BASE_CHAIN_ID && balances?.hasSufficientUsdc !== false))) || (mode === "paste" && arweaveId)) && (
+        {((mode === "file" && file && !needsPayment) || (mode === "paste" && arweaveId)) && (
           <div className="flex flex-col gap-3">
             {file && !walletAddress && (
               <span className="text-sm text-amber-400">
                 Connect wallet to upload
-              </span>
-            )}
-            {file && walletAddress && needsPayment && chainId !== BASE_CHAIN_ID && (
-              <span className="text-sm text-amber-400">
-                Switch to Base network to upload
-              </span>
-            )}
-            {file && walletAddress && needsPayment && chainId === BASE_CHAIN_ID && balances && !balances.hasSufficientUsdc && (
-              <span className="text-sm text-red-400">
-                Insufficient ETH balance — need {costEstimate?.usdc ?? balances.estimatedCostUsdc}
               </span>
             )}
             <button
@@ -809,8 +669,6 @@ export default function UploadPage() {
               disabled={
                 step === "uploading" ||
                 (mode === "file" && !!file && !walletAddress) ||
-                (mode === "file" && !!file && needsPayment && chainId !== BASE_CHAIN_ID) ||
-                (mode === "file" && !!file && needsPayment && chainId === BASE_CHAIN_ID && balances !== null && !balances.hasSufficientUsdc) ||
                 !title ||
                 !description ||
                 !filetype
