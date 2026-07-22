@@ -1,4 +1,4 @@
-import { TurboFactory, X402Funding } from "@ardrive/turbo-sdk/web";
+import { TurboFactory } from "@ardrive/turbo-sdk/web";
 import type {
   TurboUploadDataItemResponse,
   EthereumWalletAdapter,
@@ -27,10 +27,12 @@ export interface StrandedFundingTx {
 }
 
 const FREE_UPLOAD_LIMIT = 100 * 1024;
-const FUNDING_RACE_PATTERN = /Failed to submit fund transaction.*'turbo\.submitFundTransaction\(id\)':\s*(\S+)/;
 const FUND_POLL_INTERVAL = 3000;
 const FUND_POLL_TIMEOUT = 120_000;
 const STRANDED_TX_KEY = "cc0-lib-stranded-funding-tx";
+
+// USDC contract address on Base
+const USDC_CONTRACT_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 function buildTags(file: File, metadata: UploadMetadata) {
   return [
@@ -65,7 +67,7 @@ export async function uploadFree(
 }
 
 async function pollForFundConfirmation(
-  turbo: import("@ardrive/turbo-sdk").TurboAuthenticatedClient,
+  turbo: ReturnType<typeof TurboFactory.authenticated>,
   txId: string,
   onProgress?: UploadProgressCallback
 ): Promise<boolean> {
@@ -90,12 +92,8 @@ async function pollForFundConfirmation(
 }
 
 /**
- * Estimate the cost of uploading a file.
- *
- * NOTE: The Turbo payment API's /price/base-usdc endpoint returns 400, so we
- * cannot use getTokenPriceForBytes(). Instead we use getFiatEstimateForBytes()
- * which hits /price/bytes/{size} and /rates — both work fine. Since USDC is
- * a stablecoin at ~1:1 with USD, we treat the USD estimate as the USDC amount.
+ * Estimate cost using fiat pricing (the /price/base-usdc endpoint is broken).
+ * USDC ≈ USD (stablecoin), so we use fiat estimate directly.
  */
 export async function estimateCost(fileSize: number): Promise<{
   usdc: string;
@@ -117,13 +115,18 @@ export async function estimateCost(fileSize: number): Promise<{
 }
 
 /**
- * Upload a paid file (>100KB) to Arweave via the Turbo SDK.
+ * Upload a paid file (>100KB) to Arweave.
  *
- * Uses X402Funding — the intended payment mechanism for `base-usdc`. The Turbo
- * SDK lists `base-usdc` as x402-enabled (see x402EnabledTokens in upload.ts).
- * X402 sends micro USDC payments atomically with the upload via the HTTP 402
- * Payment Required protocol, avoiding the broken /price/base-usdc endpoint
- * that OnDemandFunding depends on.
+ * Since the Turbo payment API doesn't support /price/base-usdc (returns 400),
+ * we cannot use OnDemandFunding or X402Funding (both rely on that endpoint
+ * internally or on x402-fetch which has signing-compatibility issues).
+ *
+ * Instead we manually:
+ * 1. Calculate the USDC cost from fiat pricing (working endpoints)
+ * 2. Check the user's existing Turbo balance
+ * 3. If insufficient, send USDC directly to Turbo's Base wallet via ethers
+ * 4. Submit the tx to Turbo to credit the balance
+ * 5. Upload using ExistingBalanceFunding (the default)
  */
 export async function uploadPaid(
   file: File,
@@ -136,44 +139,100 @@ export async function uploadPaid(
     token: "base-usdc",
   });
 
-  onProgress?.({ phase: "funding", message: "Signing and paying with USDC..." });
+  // Step 1: Check existing Turbo balance
+  onProgress?.({ phase: "funding", message: "Checking Turbo credit balance..." });
+  const balance = await turbo.getBalance();
+  const fileSizeWinc = await getWincCost(file.size);
 
-  try {
-    return await turbo.uploadFile({
-      fileStreamFactory: () => file.stream(),
-      fileSizeFactory: () => file.size,
-      dataItemOpts: { tags: buildTags(file, metadata) },
-      fundingMode: new X402Funding({}),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "";
-    const match = msg.match(FUNDING_RACE_PATTERN);
-    if (!match?.[1]) throw err;
-
-    // Stranded funding tx from a previous OnDemandFunding attempt
-    const txId = match[1];
-    persistStrandedTx(txId);
-
-    const confirmed = await pollForFundConfirmation(turbo, txId, onProgress);
-    if (!confirmed) {
-      throw new Error(
-        `Payment sent but confirmation timed out. Your USDC was sent (tx ${txId}). The funds are recoverable — refresh the page and click "Resume" to retry, or manually call turbo.submitFundTransaction({ txId: "${txId}" }) once the tx confirms on Base.`
-      );
-    }
-
-    clearStrandedTx();
+  // If sufficient balance exists, upload directly
+  if (BigInt(balance.effectiveBalance) >= BigInt(fileSizeWinc)) {
     onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
-
     return turbo.uploadFile({
       fileStreamFactory: () => file.stream(),
       fileSizeFactory: () => file.size,
       dataItemOpts: { tags: buildTags(file, metadata) },
     });
   }
+
+  // Step 2: Calculate how much USDC to send (with 10% buffer)
+  const topUpWinc = BigInt(
+    Math.ceil(Number(fileSizeWinc) * 1.1 - Number(balance.effectiveBalance))
+  );
+  const usdcAmount = await wincToUSD(topUpWinc);
+
+  onProgress?.({
+    phase: "funding",
+    message: `Sending ~$${usdcAmount} USDC to fund upload...`,
+  });
+
+  // Step 3: Get Turbo's Base USDC wallet address
+  const wallets = await turbo.getTurboCryptoWallets();
+  const turboAddress = wallets["base-usdc"];
+  if (!turboAddress) {
+    throw new Error("Could not find Turbo Base USDC wallet address");
+  }
+
+  // Step 4: Send USDC to Turbo's wallet via ethers
+  const signer = await walletAdapter.getSigner();
+  const { ethers } = await import("ethers");
+
+  const usdcContract = new ethers.Contract(
+    USDC_CONTRACT_BASE,
+    ["function transfer(address to, uint256 amount) returns (bool)"],
+    signer
+  );
+
+  const usdcAmountWei = ethers.parseUnits(usdcAmount, 6);
+  const tx = await usdcContract.transfer(turboAddress, usdcAmountWei);
+  const txId = tx.hash;
+
+  onProgress?.({ phase: "confirming", message: "Waiting for payment to confirm on Base..." });
+
+  // Step 5: Submit the transaction to Turbo to credit the balance
+  persistStrandedTx(txId);
+  const confirmed = await pollForFundConfirmation(turbo, txId, onProgress);
+  if (!confirmed) {
+    throw new Error(
+      `Payment sent but confirmation timed out. Your USDC was sent (tx ${txId}). The funds are recoverable — refresh the page and click "Resume" to retry.`
+    );
+  }
+
+  clearStrandedTx();
+
+  // Step 6: Upload with existing balance
+  onProgress?.({ phase: "uploading", message: "Uploading to Arweave..." });
+  return turbo.uploadFile({
+    fileStreamFactory: () => file.stream(),
+    fileSizeFactory: () => file.size,
+    dataItemOpts: { tags: buildTags(file, metadata) },
+  });
 }
 
 export function isFreeUpload(file: File): boolean {
   return file.size <= FREE_UPLOAD_LIMIT;
+}
+
+/**
+ * Get the WINC cost for a given byte count (uses the working /price/bytes endpoint).
+ */
+async function getWincCost(byteCount: number): Promise<string> {
+  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
+  const costs = await turbo.getUploadCosts({ bytes: [byteCount] });
+  return costs[0].winc;
+}
+
+/**
+ * Convert a WINC amount to a USD amount string using Turbo's fiat rates.
+ */
+async function wincToUSD(winc: bigint): Promise<string> {
+  const turbo = TurboFactory.unauthenticated({ token: "base-usdc" });
+  const rates = await turbo.getFiatRates();
+  const wincPerOneGiB = BigInt(rates.winc);
+  const usdPerOneGiB = rates.fiat.usd;
+
+  const usdAmount =
+    (Number(winc) / Number(wincPerOneGiB)) * usdPerOneGiB;
+  return Math.ceil(usdAmount * 100) / 100 + ""; // round up to cents
 }
 
 function persistStrandedTx(txId: string) {
