@@ -167,9 +167,14 @@ export async function uploadPaid(
 
   // Step 3: Get Turbo's Base USDC wallet address
   const wallets = await turbo.getTurboCryptoWallets();
-  const turboAddress = wallets["base-usdc"];
+  // The /info endpoint doesn't list a base-usdc address, but ethereum
+  // and base-eth both point to the same wallet (0x6A0A10FF...), which
+  // receives USDC on any EVM chain. Fall back to ethereum address.
+  const turboAddress = wallets["base-usdc"] || wallets["ethereum"];
   if (!turboAddress) {
-    throw new Error("Could not find Turbo Base USDC wallet address");
+    throw new Error(
+      "Could not find Turbo wallet address. Please try again later or upload via ArDrive (https://app.ardrive.io)."
+    );
   }
 
   // Step 4: Send USDC to Turbo's wallet via ethers
