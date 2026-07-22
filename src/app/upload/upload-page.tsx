@@ -642,11 +642,11 @@ export default function UploadPage() {
 
             {file && !isFreeUpload(file) && (
               <div className="rounded-xl bg-zinc-800/50 p-4">
-                <p className="font-rubik text-sm text-prim">Paid upload — USDC on Base</p>
+                <p className="font-rubik text-sm text-prim">Paid upload — ETH on Base</p>
                 <p className="mt-1 text-sm text-zinc-400">
                   Files over {formatSize(FREE_UPLOAD_LIMIT)} cost{' '}
                   <span className="text-prim">{costEstimate?.usdc ?? "estimating..."}</span>{' '}
-                  to store permanently on Arweave. Your wallet needs USDC on Base (chain 8453) + a small amount of ETH for gas.
+                  to store permanently on Arweave. Your wallet needs ETH on Base (chain 8453) for both gas and the upload fee.
                 </p>
 
                 {!walletAddress && (
@@ -696,13 +696,10 @@ export default function UploadPage() {
                     ) : balances ? (
                       <div className="flex flex-wrap gap-4 text-xs">
                         <span className={balances.hasSufficientUsdc ? "text-green-400" : "text-red-400"}>
-                          USDC: {balances.usdcFormatted} {!balances.hasSufficientUsdc && "(insufficient)"}
-                        </span>
-                        <span className={balances.hasSufficientEth ? "text-green-400" : "text-red-400"}>
-                          ETH: {balances.ethFormatted} {!balances.hasSufficientEth && "(low — need ~0.0005 ETH for gas)"}
+                          ETH: {balances.ethFormatted} {!balances.hasSufficientEth && "(low — need more ETH for gas + upload fee)"}
                         </span>
                         <span className="text-prim">
-                          Cost: {costEstimate?.usdc ?? balances.estimatedCostUsdc}
+                          Est. cost: {costEstimate?.usdc ?? balances.estimatedCostUsdc}
                         </span>
                       </div>
                     ) : null}
@@ -804,7 +801,7 @@ export default function UploadPage() {
             )}
             {file && walletAddress && needsPayment && chainId === BASE_CHAIN_ID && balances && !balances.hasSufficientUsdc && (
               <span className="text-sm text-red-400">
-                Insufficient USDC balance — need {costEstimate?.usdc ?? balances.estimatedCostUsdc}
+                Insufficient ETH balance — need {costEstimate?.usdc ?? balances.estimatedCostUsdc}
               </span>
             )}
             <button
