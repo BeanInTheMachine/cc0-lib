@@ -579,8 +579,6 @@ export default function UploadPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   <a href="https://app.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ArDrive</a>
-                  <a href="https://turbo.ardrive.io" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">ar.io Turbo</a>
-                  <a href="https://akord.com" target="_blank" rel="noopener noreferrer" className="rounded bg-zinc-700 px-2 py-1 text-prim hover:bg-zinc-600 transition-colors">Akord</a>
                 </div>
                 <button
                   onClick={() => setMode("paste")}
